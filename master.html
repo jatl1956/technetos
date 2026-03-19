@@ -1464,7 +1464,63 @@ body.resizing-h {
       </div>
     </div>
 
-    <button class="btn-primary" id="btn-create-room" onclick="createRoom()">CREATE SESSION</button>
+    <div class="section-label" style="margin-top:12px;">MARGIN &amp; SHORT SELLING</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MAX LEVERAGE</label>
+        <select id="lobby-leverage" class="input-field" style="margin-top:2px;">
+          <option value="1">1x (No Margin)</option>
+          <option value="2" selected>2x</option>
+          <option value="3">3x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">SHORT SELLING</label>
+        <select id="lobby-short" class="input-field" style="margin-top:2px;">
+          <option value="true" selected>Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MAINTENANCE MARGIN</label>
+        <select id="lobby-maint-margin" class="input-field" style="margin-top:2px;">
+          <option value="0.20">20%</option>
+          <option value="0.25" selected>25%</option>
+          <option value="0.30">30%</option>
+          <option value="0.50">50%</option>
+        </select>
+      </div>
+      <div style="visibility:hidden;"></div>
+    </div>
+
+    <div class="section-label" style="margin-top:12px;">COMMISSIONS &amp; INTEREST</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">COMMISSION / SHARE</label>
+        <input type="number" id="lobby-comm-share" value="0.005" step="0.001" min="0" class="input-field" style="margin-top:2px;">
+      </div>
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MIN COMMISSION</label>
+        <input type="number" id="lobby-min-comm" value="1.00" step="0.50" min="0" class="input-field" style="margin-top:2px;">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">CASH INT. RATE (annual)</label>
+        <input type="number" id="lobby-cash-rate" value="2.0" step="0.5" min="0" max="20" class="input-field" style="margin-top:2px;">
+        <span style="font-size:8px;color:var(--text-muted);">%</span>
+      </div>
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MARGIN INT. RATE (annual)</label>
+        <input type="number" id="lobby-margin-rate" value="8.0" step="0.5" min="0" max="30" class="input-field" style="margin-top:2px;">
+        <span style="font-size:8px;color:var(--text-muted);">%</span>
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btn-create-room" onclick="createRoom()" style="margin-top:16px;">CREATE SESSION</button>
 
     <!-- History -->
     <div class="section-label" style="margin-top:24px;">SESSION HISTORY</div>
@@ -1612,6 +1668,30 @@ body.resizing-h {
           <span class="ms-stat-value" id="ms-speed">600ms</span>
         </div>
         <button class="btn-secondary" onclick="openSettings()" style="width:100%;margin-top:8px;">MODIFY PARAMETERS</button>
+      </div>
+
+      <div class="ms-section">
+        <div class="ms-section-title">MARGIN &amp; FEES</div>
+        <div class="ms-stat-row">
+          <span class="ms-stat-label">Leverage</span>
+          <span class="ms-stat-value" id="ms-leverage">2x</span>
+        </div>
+        <div class="ms-stat-row">
+          <span class="ms-stat-label">Short Selling</span>
+          <span class="ms-stat-value" id="ms-short">ON</span>
+        </div>
+        <div class="ms-stat-row">
+          <span class="ms-stat-label">Commission</span>
+          <span class="ms-stat-value" id="ms-commission">$0.005/sh</span>
+        </div>
+        <div class="ms-stat-row">
+          <span class="ms-stat-label">Cash Rate</span>
+          <span class="ms-stat-value" id="ms-cash-rate">2.0%</span>
+        </div>
+        <div class="ms-stat-row">
+          <span class="ms-stat-label">Margin Rate</span>
+          <span class="ms-stat-value" id="ms-margin-rate">8.0%</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1839,7 +1919,15 @@ const RoomManager = {
         'head_and_shoulders','inv_head_and_shoulders','double_top','double_bottom',
         'ascending_triangle','descending_triangle','bull_flag','bear_flag',
         'cup_and_handle','rising_wedge','falling_wedge','symmetrical_triangle'
-      ]
+      ],
+      // Margin, Short Selling, Commissions, Interest
+      max_leverage: params.maxLeverage || 2.0,
+      commission_per_share: params.commissionPerShare || 0.005,
+      min_commission: params.minCommission || 1.00,
+      cash_interest_rate: params.cashInterestRate || 0.02,
+      margin_interest_rate: params.marginInterestRate || 0.08,
+      short_selling_enabled: params.shortSellingEnabled !== false,
+      maintenance_margin: params.maintenanceMargin || 0.25
     };
 
     const { data, error } = await sb.from('rooms').insert(roomData).select().single();
@@ -2347,11 +2435,110 @@ const PriceEngine = {
 </script>
 <script>
 /* =========================================================
-   Technetos Multiplayer — Order Engine
-   Processes orders against price ticks, saves to Supabase
+   Technetos Multiplayer — Order Engine (v2)
+   Supports: Long, Short, Margin, Commissions, Interest
    ========================================================= */
 
 const OrderEngine = {
+  // Session parameters (set from room config)
+  sessionParams: {
+    maxLeverage: 2.0,
+    commissionPerShare: 0.005,
+    minCommission: 1.00,
+    cashInterestRate: 0.02,    // annual
+    marginInterestRate: 0.08,  // annual
+    shortSellingEnabled: true,
+    maintenanceMargin: 0.25,
+    startingCash: 100000
+  },
+
+  /** Initialize session parameters from room config */
+  initParams(room) {
+    this.sessionParams = {
+      maxLeverage: parseFloat(room.max_leverage) || 2.0,
+      commissionPerShare: parseFloat(room.commission_per_share) || 0.005,
+      minCommission: parseFloat(room.min_commission) || 1.00,
+      cashInterestRate: parseFloat(room.cash_interest_rate) || 0.02,
+      marginInterestRate: parseFloat(room.margin_interest_rate) || 0.08,
+      shortSellingEnabled: room.short_selling_enabled !== false,
+      maintenanceMargin: parseFloat(room.maintenance_margin) || 0.25,
+      startingCash: parseFloat(room.starting_cash) || 100000
+    };
+  },
+
+  /** Calculate commission for a trade */
+  calcCommission(qty) {
+    const raw = qty * this.sessionParams.commissionPerShare;
+    return Math.max(raw, this.sessionParams.minCommission);
+  },
+
+  /** Calculate buying power: equity * leverage */
+  calcBuyingPower(portfolio, currentPrice) {
+    const equity = this.calcEquity(portfolio, currentPrice);
+    return equity * this.sessionParams.maxLeverage;
+  },
+
+  /** Calculate total equity = cash + longValue - shortLiability */
+  calcEquity(portfolio, currentPrice) {
+    const longValue = portfolio.shares * currentPrice;
+    const shortLiability = portfolio.shortShares * currentPrice;
+    // Equity = cash + long positions value - cost to cover shorts
+    return portfolio.cash + longValue - shortLiability;
+  },
+
+  /** Calculate margin used = borrowed amount for longs + short collateral */
+  calcMarginUsed(portfolio, currentPrice) {
+    const longValue = portfolio.shares * currentPrice;
+    // If cash < 0 it means we borrowed. If longValue > starting cash we used margin.
+    const borrowedForLongs = Math.max(0, longValue - (portfolio.cash + longValue - this.calcEquity(portfolio, currentPrice)));
+    const shortCollateral = portfolio.shortShares * currentPrice;
+    // Simpler: margin used = max(0, total position value - equity)
+    const totalPositionValue = (portfolio.shares * currentPrice) + (portfolio.shortShares * currentPrice);
+    const equity = this.calcEquity(portfolio, currentPrice);
+    return Math.max(0, totalPositionValue - equity);
+  },
+
+  /** Calculate maintenance margin requirement */
+  calcMaintenanceReq(portfolio, currentPrice) {
+    const totalPositionValue = (portfolio.shares * currentPrice) + (portfolio.shortShares * currentPrice);
+    return totalPositionValue * this.sessionParams.maintenanceMargin;
+  },
+
+  /** Check if account is in margin call */
+  isMarginCall(portfolio, currentPrice) {
+    const equity = this.calcEquity(portfolio, currentPrice);
+    const maintReq = this.calcMaintenanceReq(portfolio, currentPrice);
+    return equity < maintReq && (portfolio.shares > 0 || portfolio.shortShares > 0);
+  },
+
+  /** Accrue interest (called periodically, e.g., every tick)
+   *  Returns { cashInterest, marginInterest } amounts for this tick
+   *  Assumes ~252 trading days/year, ticks represent seconds of a trading day
+   */
+  calcTickInterest(portfolio, currentPrice, ticksPerSecond) {
+    // Convert annual rates to per-tick rates
+    // Assume 252 trading days, 6.5 hours/day = 23400 seconds/day
+    const secondsPerYear = 252 * 23400;
+    const perTickRate = 1 / (secondsPerYear * (ticksPerSecond || 1));
+
+    let cashInterest = 0;
+    let marginInterest = 0;
+
+    // Cash interest: earned on positive idle cash
+    if (portfolio.cash > 0) {
+      cashInterest = portfolio.cash * this.sessionParams.cashInterestRate * perTickRate;
+    }
+
+    // Margin interest: charged on borrowed money
+    // Borrowed = max(0, -cash) for long margin, plus short proceeds obligation
+    const borrowed = Math.max(0, -portfolio.cash) + (portfolio.shortShares * portfolio.shortAvgCost);
+    if (borrowed > 0) {
+      marginInterest = borrowed * this.sessionParams.marginInterestRate * perTickRate;
+    }
+
+    return { cashInterest, marginInterest };
+  },
+
   /** Submit an order */
   async submitOrder(roomId, participantId, orderData) {
     const sb = getSupabase();
@@ -2429,61 +2616,62 @@ const OrderEngine = {
   /**
    * Process all working orders against a new price tick.
    * Called client-side (each student checks their own orders).
+   * Supports: BUY, SELL, SHORT_SELL, BUY_TO_COVER
    * Returns array of fills.
    */
-  processOrders(workingOrders, tick, participant) {
+  processOrders(workingOrders, tick, portfolio) {
     const fills = [];
     const bid = tick.bid;
     const ask = tick.ask;
     const last = tick.close;
+    const currentPrice = last;
 
     for (const order of workingOrders) {
       let shouldFill = false;
       let fillPrice = 0;
 
+      // Determine if price condition is met
       switch (order.order_type) {
         case 'MARKET':
           shouldFill = true;
-          fillPrice = order.side === 'BUY' ? ask : bid;
+          fillPrice = (order.side === 'BUY' || order.side === 'BUY_TO_COVER') ? ask : bid;
           break;
 
         case 'LIMIT':
-          if (order.side === 'BUY' && ask <= order.limit_price) {
+          if ((order.side === 'BUY' || order.side === 'BUY_TO_COVER') && ask <= order.limit_price) {
             shouldFill = true;
             fillPrice = ask;
-          } else if (order.side === 'SELL' && bid >= order.limit_price) {
+          } else if ((order.side === 'SELL' || order.side === 'SHORT_SELL') && bid >= order.limit_price) {
             shouldFill = true;
             fillPrice = bid;
           }
           break;
 
         case 'STOP':
-          if (order.side === 'BUY' && last >= order.stop_price) {
+          if ((order.side === 'BUY' || order.side === 'BUY_TO_COVER') && last >= order.stop_price) {
             shouldFill = true;
             fillPrice = ask;
-          } else if (order.side === 'SELL' && last <= order.stop_price) {
+          } else if ((order.side === 'SELL' || order.side === 'SHORT_SELL') && last <= order.stop_price) {
             shouldFill = true;
             fillPrice = bid;
           }
           break;
 
         case 'STOP_LIMIT':
-          if (order.side === 'BUY' && last >= order.stop_price && ask <= order.limit_price) {
+          if ((order.side === 'BUY' || order.side === 'BUY_TO_COVER') && last >= order.stop_price && ask <= order.limit_price) {
             shouldFill = true;
             fillPrice = ask;
-          } else if (order.side === 'SELL' && last <= order.stop_price && bid >= order.limit_price) {
+          } else if ((order.side === 'SELL' || order.side === 'SHORT_SELL') && last <= order.stop_price && bid >= order.limit_price) {
             shouldFill = true;
             fillPrice = bid;
           }
           break;
 
         case 'TRAILING':
-          // Trailing stop uses trail_amount stored on the order
-          // We track the best price client-side in order._bestPrice
           if (!order._bestPrice) {
             order._bestPrice = last;
           }
-          if (order.side === 'SELL') {
+          if (order.side === 'SELL' || order.side === 'SHORT_SELL') {
             if (last > order._bestPrice) order._bestPrice = last;
             const trailStop = order._bestPrice - order.trail_amount;
             if (last <= trailStop) {
@@ -2501,17 +2689,52 @@ const OrderEngine = {
           break;
       }
 
-      // Validate: BUY requires cash, SELL requires shares
+      // Validate based on side
       if (shouldFill) {
         const value = fillPrice * order.qty;
-        if (order.side === 'BUY') {
-          if (participant.cash < value) {
-            shouldFill = false; // Insufficient funds
-          }
-        } else {
-          if (participant.shares < order.qty) {
-            shouldFill = false; // Insufficient shares
-          }
+        const commission = this.calcCommission(order.qty);
+        const equity = this.calcEquity(portfolio, currentPrice);
+        const buyingPower = equity * this.sessionParams.maxLeverage;
+
+        switch (order.side) {
+          case 'BUY':
+            // Need enough buying power (cash + margin)
+            if (value + commission > buyingPower) {
+              shouldFill = false; // Insufficient buying power
+            }
+            break;
+
+          case 'SELL':
+            // Can only sell shares you own (long)
+            if (order.qty > portfolio.shares) {
+              shouldFill = false; // Insufficient shares
+            }
+            break;
+
+          case 'SHORT_SELL':
+            // Check if short selling is enabled
+            if (!this.sessionParams.shortSellingEnabled) {
+              shouldFill = false;
+              break;
+            }
+            // Need margin to cover the short: at least maintenance margin worth of equity
+            const shortValue = value;
+            const requiredEquity = shortValue * this.sessionParams.maintenanceMargin;
+            if (equity - commission < requiredEquity) {
+              shouldFill = false; // Insufficient equity for short
+            }
+            break;
+
+          case 'BUY_TO_COVER':
+            // Must have short position to cover
+            if (order.qty > portfolio.shortShares) {
+              shouldFill = false; // Can't cover more than short position
+            }
+            // Need cash or buying power to buy back
+            if (value + commission > portfolio.cash + (equity * this.sessionParams.maxLeverage - value)) {
+              shouldFill = false;
+            }
+            break;
         }
       }
 
@@ -2521,12 +2744,60 @@ const OrderEngine = {
           side: order.side,
           qty: order.qty,
           fillPrice: +fillPrice.toFixed(4),
-          value: +(fillPrice * order.qty).toFixed(2)
+          value: +(fillPrice * order.qty).toFixed(2),
+          commission: +this.calcCommission(order.qty).toFixed(2)
         });
       }
     }
 
     return fills;
+  },
+
+  /** Apply a fill to the portfolio (called after processOrders) */
+  applyFill(fill, portfolio) {
+    const { side, qty, fillPrice, value, commission } = fill;
+
+    // Deduct commission
+    portfolio.cash -= commission;
+    portfolio.totalCommissions += commission;
+
+    switch (side) {
+      case 'BUY': {
+        const totalCost = portfolio.shares * portfolio.avgCost + value;
+        portfolio.shares += qty;
+        portfolio.avgCost = portfolio.shares > 0 ? totalCost / portfolio.shares : 0;
+        portfolio.cash -= value;
+        break;
+      }
+
+      case 'SELL': {
+        const pnl = (fillPrice - portfolio.avgCost) * qty;
+        portfolio.realizedPnl += pnl;
+        portfolio.shares -= qty;
+        portfolio.cash += value;
+        if (portfolio.shares === 0) portfolio.avgCost = 0;
+        break;
+      }
+
+      case 'SHORT_SELL': {
+        // Receive cash from short sale, increase short position
+        const totalShortCost = portfolio.shortShares * portfolio.shortAvgCost + value;
+        portfolio.shortShares += qty;
+        portfolio.shortAvgCost = portfolio.shortShares > 0 ? totalShortCost / portfolio.shortShares : 0;
+        portfolio.cash += value; // receive proceeds
+        break;
+      }
+
+      case 'BUY_TO_COVER': {
+        // Pay cash to buy back, reduce short position
+        const shortPnl = (portfolio.shortAvgCost - fillPrice) * qty;
+        portfolio.realizedPnl += shortPnl;
+        portfolio.shortShares -= qty;
+        portfolio.cash -= value;
+        if (portfolio.shortShares === 0) portfolio.shortAvgCost = 0;
+        break;
+      }
+    }
   },
 
   /** Record a fill in the database and update participant */
@@ -2597,7 +2868,11 @@ const OrderEngine = {
       final_equity: metrics.equity,
       total_pnl: metrics.pnl,
       pnl_pct: metrics.pnlPct,
-      num_trades: metrics.numTrades
+      num_trades: metrics.numTrades,
+      total_commissions: metrics.totalCommissions || 0,
+      total_interest_earned: metrics.totalInterestEarned || 0,
+      total_margin_interest: metrics.totalMarginInterest || 0,
+      max_margin_used: metrics.maxMarginUsed || 0
     });
     if (error) console.error('Metrics save error:', error);
   }
@@ -2703,10 +2978,27 @@ async function createRoom() {
 
   const ticker = document.getElementById('lobby-ticker').value;
   const cash = parseFloat(document.getElementById('lobby-cash').value) || 100000;
+  const maxLeverage = parseFloat(document.getElementById('lobby-leverage').value) || 2;
+  const shortEnabled = document.getElementById('lobby-short').value === 'true';
+  const maintMargin = parseFloat(document.getElementById('lobby-maint-margin').value) || 0.25;
+  const commPerShare = parseFloat(document.getElementById('lobby-comm-share').value) || 0.005;
+  const minComm = parseFloat(document.getElementById('lobby-min-comm').value) || 1.00;
+  const cashRate = (parseFloat(document.getElementById('lobby-cash-rate').value) || 2.0) / 100;
+  const marginRate = (parseFloat(document.getElementById('lobby-margin-rate').value) || 8.0) / 100;
 
   try {
     document.getElementById('btn-create-room').textContent = 'CREATING...';
-    await RoomManager.createRoom(name, { ticker, startingCash: cash });
+    await RoomManager.createRoom(name, {
+      ticker,
+      startingCash: cash,
+      maxLeverage,
+      shortSellingEnabled: shortEnabled,
+      maintenanceMargin: maintMargin,
+      commissionPerShare: commPerShare,
+      minCommission: minComm,
+      cashInterestRate: cashRate,
+      marginInterestRate: marginRate
+    });
     showWaitingRoom();
   } catch (e) {
     showToast(e.message, 'error');
@@ -2784,6 +3076,9 @@ async function startSession() {
       spreadBps: RoomManager.currentRoom.spread_bps
     });
 
+    // Init order engine params
+    OrderEngine.initParams(RoomManager.currentRoom);
+
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;
     document.getElementById('ticker-sym').textContent = RoomManager.currentRoom.ticker;
@@ -2791,6 +3086,13 @@ async function startSession() {
     document.getElementById('ms-drift').textContent = PriceEngine.params.drift;
     document.getElementById('ms-vol').textContent = PriceEngine.params.volatility;
     document.getElementById('ms-speed').textContent = PriceEngine.params.tickSpeedMs + 'ms';
+    // Margin & fees sidebar
+    const sp = OrderEngine.sessionParams;
+    document.getElementById('ms-leverage').textContent = sp.maxLeverage + 'x';
+    document.getElementById('ms-short').textContent = sp.shortSellingEnabled ? 'ON' : 'OFF';
+    document.getElementById('ms-commission').textContent = '$' + sp.commissionPerShare + '/sh';
+    document.getElementById('ms-cash-rate').textContent = (sp.cashInterestRate * 100).toFixed(1) + '%';
+    document.getElementById('ms-margin-rate').textContent = (sp.marginInterestRate * 100).toFixed(1) + '%';
 
     initChart();
     startSimulation();
@@ -2984,11 +3286,12 @@ function startLeaderboardUpdates() {
         return;
       }
 
-      // Calculate Total Equity for each student
+      // Calculate Total Equity for each student (long + short positions)
       const lastPrice = PriceEngine.price;
       const sorted = participants.map(p => {
-        const mktVal = p.shares * lastPrice;
-        const equity = parseFloat(p.cash) + mktVal;
+        const longValue = (p.shares || 0) * lastPrice;
+        const shortLiability = (p.short_shares || 0) * lastPrice;
+        const equity = parseFloat(p.cash) + longValue - shortLiability;
         return { ...p, equity };
       }).sort((a, b) => b.equity - a.equity);
 
