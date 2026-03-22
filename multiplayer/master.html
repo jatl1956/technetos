@@ -946,6 +946,11 @@ function onPatternSelect(val) {
   PriceEngine.params.selectedPattern = val || null;
   RoomManager.broadcastParamChange({ selectedPattern: val || null });
 }
+// When a pattern fires once, reset the dropdown back to "-- Pattern --"
+PriceEngine.onPatternReset = function() {
+  document.getElementById('pattern-select').value = '';
+  RoomManager.broadcastParamChange({ selectedPattern: null });
+};
 
 /* === SETTINGS === */
 function openSettings() {

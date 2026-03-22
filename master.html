@@ -2322,19 +2322,46 @@ const PriceEngine = {
     };
   },
 
-  /** Generate OHLC during pattern — close is forced to target, open anchored to prevClose */
+  /**
+   * Generate OHLC during pattern.
+   * Close follows the pattern target, but candle color (green/red) is NOT
+   * always aligned with the swing direction. ~25-35% of candles go against
+   * the trend (counter-trend candles), just like real markets.
+   */
   _patternOHLC(targetClose, prevClose) {
-    // Open near previous close (tiny gap)
+    const trendDir = targetClose >= prevClose ? 1 : -1; // overall swing direction
+
+    // ~30% chance of a counter-trend candle (close goes opposite to trend)
+    const counterTrend = Math.random() < 0.30;
+
+    if (counterTrend) {
+      // Counter-trend candle: open jumps past target, close pulls back to target
+      // This creates a red candle in an upswing or green candle in a downswing
+      const overshoot = Math.abs(targetClose - prevClose) * (0.3 + Math.random() * 0.5);
+      const open = targetClose + trendDir * overshoot;
+      const close = targetClose * (1 + (Math.random() - 0.5) * 0.001);
+
+      const body = Math.abs(close - open);
+      const wickSize = body * (0.1 + Math.random() * 0.3);
+      const high = Math.max(open, close) + wickSize * Math.random();
+      const low = Math.min(open, close) - wickSize * Math.random();
+
+      return {
+        open: +open.toFixed(4),
+        high: +high.toFixed(4),
+        low: +low.toFixed(4),
+        close: +close.toFixed(4)
+      };
+    }
+
+    // Normal trend-following candle
     const gapNoise = 1 + (Math.random() - 0.5) * 0.001;
     const open = prevClose * gapNoise;
-
-    // Close IS the pattern target (with micro-noise to avoid perfectly flat lines)
     const microNoise = 1 + (Math.random() - 0.5) * 0.001;
     const close = targetClose * microNoise;
 
-    // Wicks: small and proportional, never fighting the candle direction
     const body = Math.abs(close - open);
-    const wickSize = body * (0.15 + Math.random() * 0.35); // 15-50% of body
+    const wickSize = body * (0.15 + Math.random() * 0.35);
     const high = Math.max(open, close) + wickSize * Math.random();
     const low = Math.min(open, close) - wickSize * Math.random();
 
@@ -2498,8 +2525,10 @@ const PriceEngine = {
   /** Start a pattern */
   _startPattern() {
     let patternKey;
+    let wasManualSelect = false;
     if (this.params.selectedPattern && this.params.selectedPattern !== 'random') {
       patternKey = this.params.selectedPattern;
+      wasManualSelect = true;
     } else {
       const pool = this.params.enabledPatterns;
       patternKey = pool[Math.floor(Math.random() * pool.length)];
@@ -2515,6 +2544,11 @@ const PriceEngine = {
       this._patternIndex = 0;
       this._patternActive = true;
       this._patternBasePrice = this.price;
+      // If manually selected, reset so it fires only once then returns to random
+      if (wasManualSelect) {
+        this.params.selectedPattern = null;
+        if (this.onPatternReset) this.onPatternReset();
+      }
       return;
     }
 
@@ -2530,6 +2564,12 @@ const PriceEngine = {
     this._patternIndex = 0;
     this._patternActive = true;
     this._patternBasePrice = this.price;
+
+    // If manually selected, reset so it fires only once then returns to random
+    if (wasManualSelect) {
+      this.params.selectedPattern = null;
+      if (this.onPatternReset) this.onPatternReset();
+    }
   },
 
   /** Get pattern core arrays */
@@ -4045,6 +4085,11 @@ function onPatternSelect(val) {
   PriceEngine.params.selectedPattern = val || null;
   RoomManager.broadcastParamChange({ selectedPattern: val || null });
 }
+// When a pattern fires once, reset the dropdown back to "-- Pattern --"
+PriceEngine.onPatternReset = function() {
+  document.getElementById('pattern-select').value = '';
+  RoomManager.broadcastParamChange({ selectedPattern: null });
+};
 
 /* === SETTINGS === */
 function openSettings() {
