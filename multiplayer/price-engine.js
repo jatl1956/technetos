@@ -93,6 +93,40 @@ const PriceEngine = {
     };
   },
 
+  /**
+   * Swing-based pattern generator v2.
+   * Defines a pattern as a sequence of swings { dir, pct, candles }.
+   * Each swing is a move of `pct` percent over `candles` candles.
+   * Noise is applied to duration (±25%), amplitude (±20%), and per-candle jitter.
+   * Returns an array of multipliers relative to 1.0 (pattern start price).
+   */
+  _generateSwingPattern(swingDef) {
+    const mults = [];
+    let level = 1.0;
+
+    for (const swing of swingDef) {
+      // Apply noise to duration and amplitude
+      const durationNoise = 1 + (Math.random() - 0.5) * 0.5;  // ±25%
+      const ampNoise = 1 + (Math.random() - 0.5) * 0.4;        // ±20%
+      const nCandles = Math.max(2, Math.round(swing.candles * durationNoise));
+      const targetPct = swing.pct * ampNoise;
+      const targetLevel = level * (1 + swing.dir * targetPct);
+
+      // Generate candles along this swing with slight wobble
+      for (let i = 1; i <= nCandles; i++) {
+        const t = i / nCandles;
+        // Ease function: slight acceleration/deceleration for natural look
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const idealLevel = level + (targetLevel - level) * eased;
+        // Per-candle jitter: ±0.3% for realism
+        const jitter = 1 + (Math.random() - 0.5) * 0.006;
+        mults.push(idealLevel * jitter);
+      }
+      level = targetLevel;
+    }
+    return mults;
+  },
+
   /** GBM step */
   _gbmStep() {
     const dt = 1 / 252;
@@ -174,6 +208,40 @@ const PriceEngine = {
     return candle;
   },
 
+  /**
+   * Swing definitions for v2 patterns.
+   * Extracted from real market data (ETH double top).
+   * Each swing: { dir: +1(up)/-1(down), pct: move size as decimal, candles: base count }
+   *
+   * Double Top from ETH chart analysis:
+   *  - Rally from base to 1st peak: ~8% over ~15 candles (mix of sizes, some big green)
+   *  - Pullback (valley): ~4% over ~5 candles (sharp red candles)
+   *  - Rally to 2nd peak (same level ±): ~4% over ~6 candles
+   *  - Small hesitation/flat: ~0.5% over ~3 candles
+   *  - Breakdown: ~6% over ~6 candles (big red candles)
+   *  - Continuation sell: ~4% over ~5 candles
+   */
+  _getSwingPatterns() {
+    return {
+      double_top: {
+        swings: [
+          { dir: +1, pct: 0.08, candles: 15 },  // Rally to 1st peak
+          { dir: -1, pct: 0.04, candles: 5 },   // Pullback valley
+          { dir: +1, pct: 0.04, candles: 6 },   // Rally to 2nd peak (approx same level)
+          { dir: -1, pct: 0.005, candles: 3 },   // Hesitation/micro-drop
+        ],
+        successSwings: [
+          { dir: -1, pct: 0.06, candles: 6 },   // Breakdown below neckline
+          { dir: -1, pct: 0.04, candles: 5 },   // Continuation sell
+        ],
+        failSwings: [
+          { dir: +1, pct: 0.03, candles: 4 },   // Fake breakdown, reverses up
+          { dir: +1, pct: 0.05, candles: 5 },   // Bull continuation
+        ]
+      }
+    };
+  },
+
   /** Start a pattern */
   _startPattern() {
     let patternKey;
@@ -184,19 +252,30 @@ const PriceEngine = {
       patternKey = pool[Math.floor(Math.random() * pool.length)];
     }
 
+    // Check if this is a v2 swing-based pattern
+    const swingPatterns = this._getSwingPatterns();
+    if (swingPatterns[patternKey]) {
+      const sp = swingPatterns[patternKey];
+      const success = Math.random() < this.params.patternSuccessRate;
+      const allSwings = [...sp.swings, ...(success ? sp.successSwings : sp.failSwings)];
+      this._patternQueue = this._generateSwingPattern(allSwings);
+      this._patternIndex = 0;
+      this._patternActive = true;
+      this._patternBasePrice = this.price;
+      return;
+    }
+
+    // Legacy v1 fixed-array patterns
     const PATTERN_CORES = this._getPatternCores();
     const pattern = PATTERN_CORES[patternKey];
-    if (!pattern) return;
+    if (!pattern || pattern === 'SWING_V2') return;
 
     this._patternQueue = [...pattern.core];
-    
-    // Add success/fail tail
     const success = Math.random() < this.params.patternSuccessRate;
     this._patternQueue.push(...(success ? pattern.successTail : pattern.failTail));
     
     this._patternIndex = 0;
     this._patternActive = true;
-    // Lock the current price as the base — all multipliers reference this fixed point
     this._patternBasePrice = this.price;
   },
 
@@ -213,11 +292,7 @@ const PriceEngine = {
         successTail: [1.015,1.022,1.030,1.040,1.048,1.055],
         failTail: [0.995,0.988,0.978,0.965,0.952,0.940]
       },
-      double_top: {
-        core: [1.000,1.008,1.018,1.030,1.042,1.052,1.058,1.060,1.055,1.045,1.032,1.020,1.012,1.008,1.015,1.028,1.042,1.052,1.058,1.060,1.055,1.048,1.038,1.025,1.015],
-        successTail: [0.998,0.985,0.972,0.958,0.945,0.935],
-        failTail: [1.020,1.035,1.050,1.065,1.078,1.088]
-      },
+      double_top: 'SWING_V2',  // Generated dynamically by _generateDoubleTop()
       double_bottom: {
         core: [1.000,0.992,0.982,0.970,0.958,0.948,0.942,0.940,0.945,0.955,0.968,0.980,0.988,0.992,0.985,0.972,0.958,0.948,0.942,0.940,0.945,0.952,0.962,0.975,0.985],
         successTail: [1.002,1.015,1.028,1.042,1.055,1.065],
