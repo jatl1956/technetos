@@ -21,7 +21,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.1.0/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 (function() {
   var noop = { held: [], pending: [] };
@@ -1404,6 +1404,47 @@ body.resizing-h {
 
 /* Hidden util */
 .hidden { display: none !important; }
+/* TA Toolbar styles */
+.ta-btn {
+  background: #1a2332; border: 1px solid #2a3a4a; color: #8899aa; font-size: 10px;
+  padding: 3px 8px; border-radius: 3px; cursor: pointer; font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap; transition: all 0.15s;
+}
+.ta-btn:hover { background: #253040; color: #ccddee; border-color: #3a5a7a; }
+.ta-btn.active { background: #1a3a5a; color: #4da6ff; border-color: #4da6ff; }
+.ta-dropdown {
+  position: absolute; top: 100%; left: 0; z-index: 100;
+  background: #141c28; border: 1px solid #2a3a4a; border-radius: 4px;
+  min-width: 160px; padding: 4px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.ta-dropdown button {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  color: #aabbcc; font-size: 10px; padding: 5px 12px; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+}
+.ta-dropdown button:hover { background: #1a2a3a; color: #eef; }
+.ta-dd-title {
+  font-size: 8px; color: #556677; letter-spacing: 1px; padding: 4px 12px 2px;
+  font-weight: 700;
+}
+.ta-modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6);
+  z-index: 200; display: flex; align-items: center; justify-content: center;
+}
+.ta-modal {
+  background: #141c28; border: 1px solid #2a3a4a; border-radius: 6px;
+  padding: 16px; min-width: 260px; max-width: 350px; font-family: 'JetBrains Mono', monospace;
+}
+.ta-modal h3 { margin: 0 0 12px 0; font-size: 11px; color: #aabbcc; letter-spacing: 1px; }
+.ta-modal-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 0; border-bottom: 1px solid #1a2a3a;
+}
+.ta-modal-item span { font-size: 10px; color: #8899aa; }
+.ta-modal-item button {
+  background: none; border: none; color: #ff5555; cursor: pointer; font-size: 12px; padding: 2px 6px;
+}
+.ta-modal-item button:hover { color: #ff0000; }
 </style>
 </head>
 <body>
@@ -1518,6 +1559,11 @@ body.resizing-h {
         <input type="number" id="lobby-margin-rate" value="8.0" step="0.5" min="0" max="30" class="input-field" style="margin-top:2px;">
         <span style="font-size:8px;color:var(--text-muted);">%</span>
       </div>
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MARGIN CALL GRACE (ticks)</label>
+        <input type="number" id="lobby-mc-grace" value="30" step="5" min="5" max="120" class="input-field" style="margin-top:2px;">
+        <span style="font-size:8px;color:var(--text-muted);">ticks before liquidation</span>
+      </div>
     </div>
 
     <button class="btn-primary" id="btn-create-room" onclick="createRoom()" style="margin-top:16px;">CREATE SESSION</button>
@@ -1612,6 +1658,42 @@ body.resizing-h {
   <div class="master-layout">
     <div class="master-main">
       <div class="panel chart-panel">
+        <div class="panel-header chart-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px; padding:4px 8px;">
+          <span class="panel-title" id="chart-title" style="margin-right:8px;">CHART</span>
+          <div class="ta-toolbar" style="display:flex; align-items:center; gap:2px; flex-wrap:wrap;">
+            <!-- Indicators dropdown -->
+            <div style="position:relative;display:inline-block;" id="ind-dropdown-wrap">
+              <button class="ta-btn" onclick="toggleDropdown('ind-dropdown')" title="Indicators">&#x1F4C8; Indicators</button>
+              <div id="ind-dropdown" class="ta-dropdown" style="display:none;">
+                <div class="ta-dd-title">OVERLAY</div>
+                <button onclick="addTA('SMA',{period:20,color:'#2196F3'})">SMA (20)</button>
+                <button onclick="addTA('SMA',{period:50,color:'#4CAF50'})">SMA (50)</button>
+                <button onclick="addTA('SMA',{period:200,color:'#FF5722'})">SMA (200)</button>
+                <button onclick="addTA('EMA',{period:12,color:'#FF9800'})">EMA (12)</button>
+                <button onclick="addTA('EMA',{period:26,color:'#00BCD4'})">EMA (26)</button>
+                <button onclick="addTA('BOLL',{period:20,stdDev:2})">Bollinger Bands</button>
+                <div class="ta-dd-title" style="margin-top:4px;">PANEL</div>
+                <button onclick="addTA('RSI',{period:14})">RSI (14)</button>
+                <button onclick="addTA('MACD',{fast:12,slow:26,signal:9})">MACD (12,26,9)</button>
+                <button onclick="addTA('VOL',{})">Volume</button>
+              </div>
+            </div>
+            <!-- Drawing tools dropdown -->
+            <div style="position:relative;display:inline-block;" id="draw-dropdown-wrap">
+              <button class="ta-btn" onclick="toggleDropdown('draw-dropdown')" title="Drawing Tools">&#x270F; Draw</button>
+              <div id="draw-dropdown" class="ta-dropdown" style="display:none;">
+                <button onclick="startDraw('horzline')">&#x2500; Horizontal Line</button>
+                <button onclick="startDraw('trendline')">&#x2571; Trend Line</button>
+                <button onclick="startDraw('channel')">&#x25AF; Channel</button>
+              </div>
+            </div>
+            <!-- Active list & clear -->
+            <button class="ta-btn" onclick="showActiveTA()" title="Active Studies" id="btn-active-ta" style="display:none;">&#x2699; Active</button>
+            <button class="ta-btn" onclick="clearAllTA()" title="Clear All" id="btn-clear-ta" style="display:none;">&#x2715;</button>
+            <!-- Drawing status -->
+            <span id="draw-status" style="display:none; font-size:9px; color:#ffcc00; margin-left:4px;"></span>
+          </div>
+        </div>
         <div class="chart-container" id="chart-container"></div>
       </div>
     </div>
@@ -1691,6 +1773,10 @@ body.resizing-h {
         <div class="ms-stat-row">
           <span class="ms-stat-label">Margin Rate</span>
           <span class="ms-stat-value" id="ms-margin-rate">8.0%</span>
+        </div>
+        <div class="ms-stat-row">
+          <span class="ms-stat-label">MC Grace</span>
+          <span class="ms-stat-value" id="ms-mc-grace">30 ticks</span>
         </div>
       </div>
     </div>
@@ -1927,7 +2013,8 @@ const RoomManager = {
       cash_interest_rate: params.cashInterestRate || 0.02,
       margin_interest_rate: params.marginInterestRate || 0.08,
       short_selling_enabled: params.shortSellingEnabled !== false,
-      maintenance_margin: params.maintenanceMargin || 0.25
+      maintenance_margin: params.maintenanceMargin || 0.25,
+      margin_call_grace_ticks: params.marginCallGraceTicks || 30
     };
 
     const { data, error } = await sb.from('rooms').insert(roomData).select().single();
@@ -2198,7 +2285,7 @@ const PriceEngine = {
   _patternQueue: [],
   _patternIndex: 0,
   _patternActive: false,
-  _patternDrift: 0,
+  _patternBasePrice: 0,   // Fixed price at pattern start — all multipliers reference this
   _ticksSincePattern: 0,
 
   /** Normal random (Box-Muller) */
@@ -2209,7 +2296,7 @@ const PriceEngine = {
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   },
 
-  /** Generate realistic OHLC from base price */
+  /** Generate realistic OHLC — normal mode (random direction candles) */
   _realisticOHLC(basePrice, vol, prevClose) {
     const dayVol = vol / Math.sqrt(252);
     // Open anchored to previous close with small gap
@@ -2226,6 +2313,30 @@ const PriceEngine = {
     const wickFactor = 0.3 + Math.random() * 0.5; // 30-80% of body
     const high = Math.max(open, close) + body * wickFactor * Math.random();
     const low = Math.min(open, close) - body * wickFactor * Math.random();
+
+    return {
+      open: +open.toFixed(4),
+      high: +high.toFixed(4),
+      low: +low.toFixed(4),
+      close: +close.toFixed(4)
+    };
+  },
+
+  /** Generate OHLC during pattern — close is forced to target, open anchored to prevClose */
+  _patternOHLC(targetClose, prevClose) {
+    // Open near previous close (tiny gap)
+    const gapNoise = 1 + (Math.random() - 0.5) * 0.001;
+    const open = prevClose * gapNoise;
+
+    // Close IS the pattern target (with micro-noise to avoid perfectly flat lines)
+    const microNoise = 1 + (Math.random() - 0.5) * 0.001;
+    const close = targetClose * microNoise;
+
+    // Wicks: small and proportional, never fighting the candle direction
+    const body = Math.abs(close - open);
+    const wickSize = body * (0.15 + Math.random() * 0.35); // 15-50% of body
+    const high = Math.max(open, close) + wickSize * Math.random();
+    const low = Math.min(open, close) - wickSize * Math.random();
 
     return {
       open: +open.toFixed(4),
@@ -2259,18 +2370,18 @@ const PriceEngine = {
 
   /** Generate the next candle */
   nextCandle() {
-    let basePrice;
+    let ohlc;
     let patternName = null;
     let patternPhase = null;
 
     if (this._patternActive && this._patternIndex < this._patternQueue.length) {
-      // Pattern-driven price
+      // === PATTERN MODE ===
+      // Multiplier is applied to the FIXED base price (price when pattern started)
       const mult = this._patternQueue[this._patternIndex];
-      // Add jitter noise
-      const jitter = 1 + (Math.random() - 0.5) * 0.004;
-      basePrice = (this._patternDrift + this.price * 0.01) + this.price * mult * jitter;
-      // Actually: basePrice = pattern base * multiplier + drift
-      basePrice = this.price * mult * jitter;
+      const targetClose = this._patternBasePrice * mult;
+
+      // Generate candle with close forced to pattern target
+      ohlc = this._patternOHLC(targetClose, this.prevClose);
       this._patternIndex++;
       patternPhase = 'active';
 
@@ -2279,17 +2390,16 @@ const PriceEngine = {
         this._ticksSincePattern = 0;
       }
     } else {
-      // Normal GBM
-      basePrice = this._gbmStep();
+      // === NORMAL GBM MODE ===
+      const basePrice = this._gbmStep();
+      ohlc = this._realisticOHLC(basePrice, this.params.volatility, this.prevClose);
 
       // Check pattern injection
       if (this._shouldInjectPattern() && this.params.enabledPatterns.length > 0) {
-        // Will start pattern on next tick
         this._startPattern();
       }
     }
 
-    const ohlc = this._realisticOHLC(basePrice, this.params.volatility, this.prevClose);
     this.price = ohlc.close;
     this.prevClose = ohlc.close;
     this.tickIndex++;
@@ -2327,7 +2437,6 @@ const PriceEngine = {
       patternKey = pool[Math.floor(Math.random() * pool.length)];
     }
 
-    // Pattern core arrays (same as in app.js)
     const PATTERN_CORES = this._getPatternCores();
     const pattern = PATTERN_CORES[patternKey];
     if (!pattern) return;
@@ -2340,7 +2449,8 @@ const PriceEngine = {
     
     this._patternIndex = 0;
     this._patternActive = true;
-    this._patternDrift = 0;
+    // Lock the current price as the base — all multipliers reference this fixed point
+    this._patternBasePrice = this.price;
   },
 
   /** Get pattern core arrays */
@@ -2422,7 +2532,7 @@ const PriceEngine = {
     this._patternQueue = [];
     this._patternIndex = 0;
     this._patternActive = false;
-    this._patternDrift = 0;
+    this._patternBasePrice = 0;
     this._ticksSincePattern = 0;
   },
 
@@ -2436,7 +2546,8 @@ const PriceEngine = {
 <script>
 /* =========================================================
    Technetos Multiplayer — Order Engine (v2)
-   Supports: Long, Short, Margin, Commissions, Interest
+   Supports: Long, Short, Margin, Commissions, Interest,
+   Margin Call with grace period & forced liquidation
    ========================================================= */
 
 const OrderEngine = {
@@ -2449,7 +2560,8 @@ const OrderEngine = {
     marginInterestRate: 0.08,  // annual
     shortSellingEnabled: true,
     maintenanceMargin: 0.25,
-    startingCash: 100000
+    startingCash: 100000,
+    marginCallGraceTicks: 30   // ticks before forced liquidation
   },
 
   /** Initialize session parameters from room config */
@@ -2462,7 +2574,8 @@ const OrderEngine = {
       marginInterestRate: parseFloat(room.margin_interest_rate) || 0.08,
       shortSellingEnabled: room.short_selling_enabled !== false,
       maintenanceMargin: parseFloat(room.maintenance_margin) || 0.25,
-      startingCash: parseFloat(room.starting_cash) || 100000
+      startingCash: parseFloat(room.starting_cash) || 100000,
+      marginCallGraceTicks: parseInt(room.margin_call_grace_ticks) || 30
     };
   },
 
@@ -2509,6 +2622,56 @@ const OrderEngine = {
     const equity = this.calcEquity(portfolio, currentPrice);
     const maintReq = this.calcMaintenanceReq(portfolio, currentPrice);
     return equity < maintReq && (portfolio.shares > 0 || portfolio.shortShares > 0);
+  },
+
+  /** Check if an order side opens a new position (blocked during margin call) */
+  isOpeningOrder(side) {
+    return side === 'BUY' || side === 'SHORT_SELL';
+  },
+
+  /** Generate forced liquidation orders to restore margin.
+   *  Strategy: close positions proportionally until equity >= maintenance req.
+   *  Returns array of { side, qty } liquidation orders.
+   */
+  generateLiquidationOrders(portfolio, currentPrice) {
+    const orders = [];
+    const equity = this.calcEquity(portfolio, currentPrice);
+    const maintReq = this.calcMaintenanceReq(portfolio, currentPrice);
+    if (equity >= maintReq) return orders; // no liquidation needed
+
+    // Calculate how much equity deficit we have
+    let deficit = maintReq - equity;
+
+    // First: close short positions (buy to cover) — each share covered
+    // reduces maintenance req and may free equity
+    if (portfolio.shortShares > 0) {
+      // Covering 1 short share: reduces maintReq by (price * maintenanceMargin)
+      // and changes equity by (shortAvgCost - price) per share (P&L recognition)
+      const reliefPerShare = currentPrice * this.sessionParams.maintenanceMargin;
+      const sharesToCover = Math.min(
+        portfolio.shortShares,
+        Math.ceil(deficit / reliefPerShare)
+      );
+      if (sharesToCover > 0) {
+        orders.push({ side: 'BUY_TO_COVER', qty: sharesToCover });
+        // Estimate new deficit after covering
+        deficit -= sharesToCover * reliefPerShare;
+      }
+    }
+
+    // Then: sell long positions if still in deficit
+    if (deficit > 0 && portfolio.shares > 0) {
+      const reliefPerShare = currentPrice * this.sessionParams.maintenanceMargin;
+      const sharesToSell = Math.min(
+        portfolio.shares,
+        Math.ceil(deficit / reliefPerShare)
+      );
+      if (sharesToSell > 0) {
+        orders.push({ side: 'SELL', qty: sharesToSell });
+      }
+    }
+
+    return orders;
   },
 
   /** Accrue interest (called periodically, e.g., every tick)
@@ -2881,6 +3044,592 @@ const OrderEngine = {
 </script>
 <script>
 /* =========================================================
+   Technetos — Technical Analysis Engine
+   Indicators: SMA, EMA, Bollinger Bands, RSI, MACD, Volume
+   Drawing tools: Trend Line, Horizontal Line, Channel
+   ========================================================= */
+
+const TAEngine = {
+  // Candle history
+  candles: [],
+
+  // Active indicators: { id, type, params, series[] }
+  indicators: [],
+
+  // Active drawings: { id, type, points[], series }
+  drawings: [],
+
+  // Drawing mode state
+  drawingMode: null,   // null | 'trendline' | 'horzline' | 'channel'
+  drawingPoints: [],
+  _nextId: 1,
+
+  // Chart references (set by init)
+  chart: null,
+  candleSeries: null,
+  panes: {},  // { 'rsi': paneIndex, 'macd': paneIndex }
+
+  /** Initialize with chart reference */
+  init(chart, candleSeries) {
+    this.chart = chart;
+    this.candleSeries = candleSeries;
+    this.candles = [];
+    this.indicators = [];
+    this.drawings = [];
+    this.panes = {};
+    this._nextId = 1;
+  },
+
+  /** Push a new candle (called on each tick) */
+  pushCandle(candle) {
+    // candle: { time, open, high, low, close, volume? }
+    const existing = this.candles.findIndex(c => c.time === candle.time);
+    if (existing >= 0) {
+      this.candles[existing] = candle;
+    } else {
+      this.candles.push(candle);
+    }
+    // Update all active indicators
+    this.updateAllIndicators();
+  },
+
+  /* ============================
+     INDICATOR CALCULATIONS
+     ============================ */
+
+  _calcSMA(data, period) {
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        result.push({ time: data[i].time });
+      } else {
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += data[i - j].close;
+        result.push({ time: data[i].time, value: sum / period });
+      }
+    }
+    return result;
+  },
+
+  _calcEMA(data, period) {
+    const result = [];
+    const k = 2 / (period + 1);
+    let ema = null;
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        result.push({ time: data[i].time });
+      } else if (ema === null) {
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += data[i - j].close;
+        ema = sum / period;
+        result.push({ time: data[i].time, value: ema });
+      } else {
+        ema = data[i].close * k + ema * (1 - k);
+        result.push({ time: data[i].time, value: ema });
+      }
+    }
+    return result;
+  },
+
+  _calcBollinger(data, period, stdDev) {
+    const sma = this._calcSMA(data, period);
+    const upper = [], lower = [];
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        upper.push({ time: data[i].time });
+        lower.push({ time: data[i].time });
+      } else {
+        const mean = sma[i].value;
+        let sumSq = 0;
+        for (let j = 0; j < period; j++) {
+          const diff = data[i - j].close - mean;
+          sumSq += diff * diff;
+        }
+        const sd = Math.sqrt(sumSq / period);
+        upper.push({ time: data[i].time, value: mean + stdDev * sd });
+        lower.push({ time: data[i].time, value: mean - stdDev * sd });
+      }
+    }
+    return { middle: sma, upper, lower };
+  },
+
+  _calcRSI(data, period) {
+    const result = [];
+    if (data.length < 2) return result;
+    result.push({ time: data[0].time });
+
+    let avgGain = 0, avgLoss = 0;
+    for (let i = 1; i < data.length; i++) {
+      const change = data[i].close - data[i - 1].close;
+      const gain = change > 0 ? change : 0;
+      const loss = change < 0 ? -change : 0;
+
+      if (i < period) {
+        avgGain += gain;
+        avgLoss += loss;
+        result.push({ time: data[i].time });
+      } else if (i === period) {
+        avgGain = (avgGain + gain) / period;
+        avgLoss = (avgLoss + loss) / period;
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        result.push({ time: data[i].time, value: 100 - 100 / (1 + rs) });
+      } else {
+        avgGain = (avgGain * (period - 1) + gain) / period;
+        avgLoss = (avgLoss * (period - 1) + loss) / period;
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        result.push({ time: data[i].time, value: 100 - 100 / (1 + rs) });
+      }
+    }
+    return result;
+  },
+
+  _calcMACD(data, fast, slow, signal) {
+    const emaFast = this._calcEMA(data, fast);
+    const emaSlow = this._calcEMA(data, slow);
+
+    // MACD line = fast EMA - slow EMA
+    const macdLine = [];
+    for (let i = 0; i < data.length; i++) {
+      if (emaFast[i].value !== undefined && emaSlow[i].value !== undefined) {
+        macdLine.push({ time: data[i].time, close: emaFast[i].value - emaSlow[i].value });
+      } else {
+        macdLine.push({ time: data[i].time, close: 0 });
+      }
+    }
+
+    // Signal line = EMA of MACD line
+    const signalData = this._calcEMA(macdLine, signal);
+
+    // Histogram = MACD - Signal
+    const macdResult = [], signalResult = [], histResult = [];
+    for (let i = 0; i < data.length; i++) {
+      const m = (emaFast[i].value !== undefined && emaSlow[i].value !== undefined)
+        ? emaFast[i].value - emaSlow[i].value : undefined;
+      const s = signalData[i] ? signalData[i].value : undefined;
+
+      macdResult.push({ time: data[i].time, value: m });
+      signalResult.push({ time: data[i].time, value: s });
+      if (m !== undefined && s !== undefined) {
+        const h = m - s;
+        histResult.push({ time: data[i].time, value: h, color: h >= 0 ? 'rgba(0,200,83,0.6)' : 'rgba(255,61,87,0.6)' });
+      } else {
+        histResult.push({ time: data[i].time });
+      }
+    }
+    return { macd: macdResult, signal: signalResult, histogram: histResult };
+  },
+
+  /* ============================
+     INDICATOR MANAGEMENT
+     ============================ */
+
+  /** Add an indicator to the chart */
+  addIndicator(type, params = {}) {
+    const id = 'ind-' + (this._nextId++);
+    const ind = { id, type, params, series: [] };
+
+    switch (type) {
+      case 'SMA': {
+        const period = params.period || 20;
+        const color = params.color || '#2196F3';
+        const s = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color, lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerVisible: false,
+          title: 'SMA(' + period + ')'
+        });
+        ind.series.push(s);
+        break;
+      }
+      case 'EMA': {
+        const period = params.period || 20;
+        const color = params.color || '#FF9800';
+        const s = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color, lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerVisible: false,
+          title: 'EMA(' + period + ')'
+        });
+        ind.series.push(s);
+        break;
+      }
+      case 'BOLL': {
+        const period = params.period || 20;
+        const stdDev = params.stdDev || 2;
+        const color = params.color || '#9C27B0';
+        // Middle (SMA)
+        const mid = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color, lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerVisible: false,
+          title: 'BB(' + period + ')'
+        });
+        // Upper
+        const up = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color: 'rgba(156,39,176,0.4)', lineWidth: 1, lineStyle: 2,
+          priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+        });
+        // Lower
+        const lo = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color: 'rgba(156,39,176,0.4)', lineWidth: 1, lineStyle: 2,
+          priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+        });
+        ind.series.push(mid, up, lo);
+        break;
+      }
+      case 'RSI': {
+        const period = params.period || 14;
+        const paneIdx = this._getOrCreatePane('rsi');
+        const s = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color: '#E040FB', lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: true, crosshairMarkerVisible: false,
+          title: 'RSI(' + period + ')'
+        }, paneIdx);
+        // Add reference lines at 30 and 70
+        s.createPriceLine({ price: 70, color: 'rgba(255,255,255,0.2)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
+        s.createPriceLine({ price: 30, color: 'rgba(255,255,255,0.2)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
+        ind.paneIdx = paneIdx;
+        ind.series.push(s);
+        break;
+      }
+      case 'MACD': {
+        const fast = params.fast || 12;
+        const slow = params.slow || 26;
+        const signal = params.signal || 9;
+        const paneIdx = this._getOrCreatePane('macd');
+        // MACD line
+        const macdS = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color: '#2196F3', lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: true, crosshairMarkerVisible: false,
+          title: 'MACD'
+        }, paneIdx);
+        // Signal line
+        const sigS = this.chart.addSeries(LightweightCharts.LineSeries, {
+          color: '#FF9800', lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerVisible: false,
+          title: 'Signal'
+        }, paneIdx);
+        // Histogram
+        const histS = this.chart.addSeries(LightweightCharts.HistogramSeries, {
+          priceLineVisible: false, lastValueVisible: false,
+          priceFormat: { type: 'volume' }
+        }, paneIdx);
+        ind.paneIdx = paneIdx;
+        ind.series.push(macdS, sigS, histS);
+        break;
+      }
+      case 'VOL': {
+        const paneIdx = this._getOrCreatePane('volume');
+        const s = this.chart.addSeries(LightweightCharts.HistogramSeries, {
+          priceLineVisible: false, lastValueVisible: false,
+          priceFormat: { type: 'volume' },
+          title: 'Volume'
+        }, paneIdx);
+        ind.paneIdx = paneIdx;
+        ind.series.push(s);
+        break;
+      }
+    }
+
+    this.indicators.push(ind);
+    this._updateIndicator(ind);
+    return id;
+  },
+
+  /** Remove an indicator */
+  removeIndicator(id) {
+    const idx = this.indicators.findIndex(i => i.id === id);
+    if (idx < 0) return;
+    const ind = this.indicators[idx];
+    for (const s of ind.series) {
+      this.chart.removeSeries(s);
+    }
+    // Clean up pane if empty
+    if (ind.paneIdx !== undefined) {
+      const paneKey = Object.keys(this.panes).find(k => this.panes[k] === ind.paneIdx);
+      const othersInPane = this.indicators.filter(i => i.id !== id && i.paneIdx === ind.paneIdx);
+      if (othersInPane.length === 0 && paneKey) {
+        try { this.chart.removePane(ind.paneIdx); } catch(e) {}
+        delete this.panes[paneKey];
+        // Reindex remaining panes
+        for (const k of Object.keys(this.panes)) {
+          if (this.panes[k] > ind.paneIdx) this.panes[k]--;
+        }
+        for (const other of this.indicators) {
+          if (other.paneIdx !== undefined && other.paneIdx > ind.paneIdx) other.paneIdx--;
+        }
+      }
+    }
+    this.indicators.splice(idx, 1);
+  },
+
+  /** Get or create a pane for an indicator type */
+  _getOrCreatePane(key) {
+    if (this.panes[key] !== undefined) return this.panes[key];
+    const pane = this.chart.addPane();
+    const allPanes = this.chart.panes();
+    const paneIdx = allPanes.length - 1;
+    this.panes[key] = paneIdx;
+    return paneIdx;
+  },
+
+  /** Update a single indicator with current data */
+  _updateIndicator(ind) {
+    const data = this.candles;
+    if (data.length < 2) return;
+
+    switch (ind.type) {
+      case 'SMA': {
+        const result = this._calcSMA(data, ind.params.period || 20);
+        ind.series[0].setData(result);
+        break;
+      }
+      case 'EMA': {
+        const result = this._calcEMA(data, ind.params.period || 20);
+        ind.series[0].setData(result);
+        break;
+      }
+      case 'BOLL': {
+        const bb = this._calcBollinger(data, ind.params.period || 20, ind.params.stdDev || 2);
+        ind.series[0].setData(bb.middle);
+        ind.series[1].setData(bb.upper);
+        ind.series[2].setData(bb.lower);
+        break;
+      }
+      case 'RSI': {
+        const result = this._calcRSI(data, ind.params.period || 14);
+        ind.series[0].setData(result);
+        break;
+      }
+      case 'MACD': {
+        const m = this._calcMACD(data, ind.params.fast || 12, ind.params.slow || 26, ind.params.signal || 9);
+        ind.series[0].setData(m.macd);
+        ind.series[1].setData(m.signal);
+        ind.series[2].setData(m.histogram);
+        break;
+      }
+      case 'VOL': {
+        const volData = data.map(c => ({
+          time: c.time,
+          value: c.volume || Math.round(Math.random() * 500000 + 100000),
+          color: c.close >= c.open ? 'rgba(0,200,83,0.3)' : 'rgba(255,61,87,0.3)'
+        }));
+        ind.series[0].setData(volData);
+        break;
+      }
+    }
+  },
+
+  /** Update all indicators (called after each tick) */
+  updateAllIndicators() {
+    for (const ind of this.indicators) {
+      this._updateIndicator(ind);
+    }
+  },
+
+  /* ============================
+     DRAWING TOOLS
+     ============================ */
+
+  /** Start drawing mode */
+  startDrawing(type) {
+    this.drawingMode = type;
+    this.drawingPoints = [];
+  },
+
+  /** Cancel drawing */
+  cancelDrawing() {
+    this.drawingMode = null;
+    this.drawingPoints = [];
+    // Remove temp series if any
+    if (this._tempSeries) {
+      try { this.chart.removeSeries(this._tempSeries); } catch(e) {}
+      this._tempSeries = null;
+    }
+  },
+
+  /** Handle a click on the chart (for drawing tools) */
+  handleClick(time, price) {
+    if (!this.drawingMode) return false;
+
+    this.drawingPoints.push({ time, price });
+
+    switch (this.drawingMode) {
+      case 'horzline':
+        this._addHorizontalLine(price);
+        this.drawingMode = null;
+        this.drawingPoints = [];
+        return true;
+
+      case 'trendline':
+        if (this.drawingPoints.length === 2) {
+          this._addTrendLine(this.drawingPoints[0], this.drawingPoints[1]);
+          this.drawingMode = null;
+          this.drawingPoints = [];
+          return true;
+        }
+        return true;  // waiting for second point
+
+      case 'channel':
+        if (this.drawingPoints.length === 3) {
+          this._addChannel(this.drawingPoints[0], this.drawingPoints[1], this.drawingPoints[2]);
+          this.drawingMode = null;
+          this.drawingPoints = [];
+          return true;
+        }
+        return true;  // waiting for more points
+    }
+    return false;
+  },
+
+  /** Add horizontal line at price */
+  _addHorizontalLine(price) {
+    const id = 'draw-' + (this._nextId++);
+    // Use priceLine on the candle series
+    const line = this.candleSeries.createPriceLine({
+      price: price,
+      color: '#FFD700',
+      lineWidth: 1,
+      lineStyle: 0, // solid
+      axisLabelVisible: true,
+      title: price.toFixed(2)
+    });
+    this.drawings.push({ id, type: 'horzline', priceLine: line, price });
+    return id;
+  },
+
+  /** Add trend line between two points */
+  _addTrendLine(p1, p2) {
+    const id = 'draw-' + (this._nextId++);
+    // Interpolate a line series between the two time points and extend
+    const data = this._interpolateLine(p1, p2);
+    const s = this.chart.addSeries(LightweightCharts.LineSeries, {
+      color: '#FFD700', lineWidth: 1, lineStyle: 0,
+      priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false, pointMarkersVisible: false
+    });
+    s.setData(data);
+    this.drawings.push({ id, type: 'trendline', series: s, p1, p2 });
+    return id;
+  },
+
+  /** Add channel (parallel lines) */
+  _addChannel(p1, p2, p3) {
+    const id = 'draw-' + (this._nextId++);
+    // p1-p2 = main line, p3 = offset point for parallel line
+    const data1 = this._interpolateLine(p1, p2);
+
+    // Calculate offset from p3 to the p1-p2 line
+    const slope = (p2.price - p1.price) / (p2.time - p1.time);
+    const expectedPrice = p1.price + slope * (p3.time - p1.time);
+    const offset = p3.price - expectedPrice;
+
+    const p1b = { time: p1.time, price: p1.price + offset };
+    const p2b = { time: p2.time, price: p2.price + offset };
+    const data2 = this._interpolateLine(p1b, p2b);
+
+    const s1 = this.chart.addSeries(LightweightCharts.LineSeries, {
+      color: '#FFD700', lineWidth: 1, lineStyle: 0,
+      priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false, pointMarkersVisible: false
+    });
+    const s2 = this.chart.addSeries(LightweightCharts.LineSeries, {
+      color: '#FFD700', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false, pointMarkersVisible: false
+    });
+    s1.setData(data1);
+    s2.setData(data2);
+    this.drawings.push({ id, type: 'channel', series: [s1, s2], p1, p2, p3 });
+    return id;
+  },
+
+  /** Interpolate a line across the visible candle range */
+  _interpolateLine(p1, p2) {
+    const data = [];
+    // Use existing candle times
+    const times = this.candles.map(c => c.time);
+    if (times.length < 2) return data;
+
+    const slope = (p2.price - p1.price) / (p2.time - p1.time || 1);
+
+    for (const t of times) {
+      const price = p1.price + slope * (t - p1.time);
+      data.push({ time: t, value: price });
+    }
+    return data;
+  },
+
+  /** Remove a drawing */
+  removeDrawing(id) {
+    const idx = this.drawings.findIndex(d => d.id === id);
+    if (idx < 0) return;
+    const drawing = this.drawings[idx];
+
+    if (drawing.type === 'horzline') {
+      try { this.candleSeries.removePriceLine(drawing.priceLine); } catch(e) {}
+    } else if (drawing.type === 'trendline') {
+      try { this.chart.removeSeries(drawing.series); } catch(e) {}
+    } else if (drawing.type === 'channel') {
+      for (const s of drawing.series) {
+        try { this.chart.removeSeries(s); } catch(e) {}
+      }
+    }
+    this.drawings.splice(idx, 1);
+  },
+
+  /** Remove all drawings */
+  clearDrawings() {
+    while (this.drawings.length > 0) {
+      this.removeDrawing(this.drawings[0].id);
+    }
+  },
+
+  /** Remove all indicators */
+  clearIndicators() {
+    while (this.indicators.length > 0) {
+      this.removeIndicator(this.indicators[0].id);
+    }
+  },
+
+  /** Clear everything */
+  clearAll() {
+    this.clearIndicators();
+    this.clearDrawings();
+  },
+
+  /** Get list of active indicators for UI */
+  getActiveIndicators() {
+    return this.indicators.map(i => ({
+      id: i.id,
+      type: i.type,
+      label: this._getLabel(i)
+    }));
+  },
+
+  /** Get list of active drawings for UI */
+  getActiveDrawings() {
+    return this.drawings.map(d => ({
+      id: d.id,
+      type: d.type,
+      label: d.type === 'horzline' ? ('H-Line @ ' + d.price.toFixed(2)) :
+             d.type === 'trendline' ? 'Trend Line' : 'Channel'
+    }));
+  },
+
+  _getLabel(ind) {
+    switch (ind.type) {
+      case 'SMA': return 'SMA(' + (ind.params.period || 20) + ')';
+      case 'EMA': return 'EMA(' + (ind.params.period || 20) + ')';
+      case 'BOLL': return 'BB(' + (ind.params.period || 20) + ',' + (ind.params.stdDev || 2) + ')';
+      case 'RSI': return 'RSI(' + (ind.params.period || 14) + ')';
+      case 'MACD': return 'MACD(' + (ind.params.fast || 12) + ',' + (ind.params.slow || 26) + ',' + (ind.params.signal || 9) + ')';
+      case 'VOL': return 'Volume';
+      default: return ind.type;
+    }
+  }
+};
+
+</script>
+<script>
+/* =========================================================
    MASTER CONTROLLER
    ========================================================= */
 let authMode = 'signin';
@@ -2985,6 +3734,7 @@ async function createRoom() {
   const minComm = parseFloat(document.getElementById('lobby-min-comm').value) || 1.00;
   const cashRate = (parseFloat(document.getElementById('lobby-cash-rate').value) || 2.0) / 100;
   const marginRate = (parseFloat(document.getElementById('lobby-margin-rate').value) || 8.0) / 100;
+  const mcGraceTicks = parseInt(document.getElementById('lobby-mc-grace').value) || 30;
 
   try {
     document.getElementById('btn-create-room').textContent = 'CREATING...';
@@ -2997,7 +3747,8 @@ async function createRoom() {
       commissionPerShare: commPerShare,
       minCommission: minComm,
       cashInterestRate: cashRate,
-      marginInterestRate: marginRate
+      marginInterestRate: marginRate,
+      marginCallGraceTicks: mcGraceTicks
     });
     showWaitingRoom();
   } catch (e) {
@@ -3082,6 +3833,7 @@ async function startSession() {
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;
     document.getElementById('ticker-sym').textContent = RoomManager.currentRoom.ticker;
+    document.getElementById('chart-title').textContent = RoomManager.currentRoom.ticker;
     document.getElementById('ms-ticker').textContent = RoomManager.currentRoom.ticker;
     document.getElementById('ms-drift').textContent = PriceEngine.params.drift;
     document.getElementById('ms-vol').textContent = PriceEngine.params.volatility;
@@ -3093,6 +3845,7 @@ async function startSession() {
     document.getElementById('ms-commission').textContent = '$' + sp.commissionPerShare + '/sh';
     document.getElementById('ms-cash-rate').textContent = (sp.cashInterestRate * 100).toFixed(1) + '%';
     document.getElementById('ms-margin-rate').textContent = (sp.marginInterestRate * 100).toFixed(1) + '%';
+    document.getElementById('ms-mc-grace').textContent = (sp.marginCallGraceTicks || 30) + ' ticks';
 
     initChart();
     startSimulation();
@@ -3124,7 +3877,8 @@ function initChart() {
     },
     timeScale: { borderColor: '#1e2836', timeVisible: true, secondsVisible: false, rightOffset: 5 }
   });
-  candleSeries = chart.addCandlestickSeries({
+  // v5 API: addSeries(CandlestickSeries, options)
+  candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
     upColor: '#00c853', downColor: '#ff3d57',
     borderUpColor: '#00c853', borderDownColor: '#ff3d57',
     wickUpColor: '#00c853', wickDownColor: '#ff3d57'
@@ -3134,6 +3888,19 @@ function initChart() {
   new ResizeObserver(() => {
     chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
   }).observe(container);
+
+  // Initialize TA Engine
+  TAEngine.init(chart, candleSeries);
+
+  // Chart click handler for drawing tools
+  chart.subscribeClick((param) => {
+    if (!TAEngine.drawingMode) return;
+    if (!param.time || !param.point) return;
+    const price = candleSeries.coordinateToPrice(param.point.y);
+    if (price === null || price === undefined) return;
+    const consumed = TAEngine.handleClick(param.time, price);
+    if (consumed) updateTAButtons();
+  });
 }
 
 /* === SIMULATION LOOP === */
@@ -3148,6 +3915,7 @@ function startSimulation() {
     
     // Update chart
     candleSeries.update(candle);
+    TAEngine.pushCandle(candle);
     
     // Update top bar
     document.getElementById('ticker-price').textContent = candle.close.toFixed(2);
@@ -3331,6 +4099,95 @@ function showToast(msg, type = 'info') {
   el.textContent = msg;
   container.appendChild(el);
   setTimeout(() => el.remove(), 4000);
+}
+
+/* === TA TOOLBAR FUNCTIONS === */
+function toggleDropdown(id) {
+  const dd = document.getElementById(id);
+  document.querySelectorAll('.ta-dropdown').forEach(d => { if (d.id !== id) d.style.display = 'none'; });
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.ta-btn') && !e.target.closest('.ta-dropdown')) {
+    document.querySelectorAll('.ta-dropdown').forEach(d => d.style.display = 'none');
+  }
+});
+
+function addTA(type, params) {
+  document.querySelectorAll('.ta-dropdown').forEach(d => d.style.display = 'none');
+  TAEngine.addIndicator(type, params);
+  updateTAButtons();
+  showToast(TAEngine._getLabel({ type, params }) + ' added', 'info');
+}
+
+function startDraw(type) {
+  document.querySelectorAll('.ta-dropdown').forEach(d => d.style.display = 'none');
+  TAEngine.startDrawing(type);
+  const status = document.getElementById('draw-status');
+  const labels = { horzline: 'Click on chart to place horizontal line', trendline: 'Click 2 points for trend line', channel: 'Click 3 points for channel' };
+  status.textContent = labels[type] || 'Click on chart...';
+  status.style.display = 'inline';
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      TAEngine.cancelDrawing();
+      status.style.display = 'none';
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+  const checkDone = setInterval(() => {
+    if (!TAEngine.drawingMode) {
+      status.style.display = 'none';
+      clearInterval(checkDone);
+      document.removeEventListener('keydown', escHandler);
+    }
+  }, 200);
+}
+
+function updateTAButtons() {
+  const hasItems = TAEngine.indicators.length > 0 || TAEngine.drawings.length > 0;
+  document.getElementById('btn-active-ta').style.display = hasItems ? 'inline-block' : 'none';
+  document.getElementById('btn-clear-ta').style.display = hasItems ? 'inline-block' : 'none';
+}
+
+function showActiveTA() {
+  const inds = TAEngine.getActiveIndicators();
+  const draws = TAEngine.getActiveDrawings();
+  if (inds.length === 0 && draws.length === 0) { showToast('No active studies', 'info'); return; }
+  let html = '<div class="ta-modal-overlay" id="ta-modal-overlay" onclick="if(event.target===this)this.remove()">';
+  html += '<div class="ta-modal">';
+  html += '<h3>ACTIVE STUDIES</h3>';
+  for (const i of inds) {
+    html += '<div class="ta-modal-item"><span>' + i.label + '</span><button onclick="removeTA(\'' + i.id + '\')">&times;</button></div>';
+  }
+  for (const d of draws) {
+    html += '<div class="ta-modal-item"><span>' + d.label + '</span><button onclick="removeDraw(\'' + d.id + '\')">&times;</button></div>';
+  }
+  html += '<div style="margin-top:12px;text-align:right;"><button class="ta-btn" onclick="document.getElementById(\'ta-modal-overlay\').remove()">Close</button></div>';
+  html += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function removeTA(id) {
+  TAEngine.removeIndicator(id);
+  updateTAButtons();
+  const modal = document.getElementById('ta-modal-overlay');
+  if (modal) modal.remove();
+  showActiveTA();
+}
+
+function removeDraw(id) {
+  TAEngine.removeDrawing(id);
+  updateTAButtons();
+  const modal = document.getElementById('ta-modal-overlay');
+  if (modal) modal.remove();
+  if (TAEngine.drawings.length > 0 || TAEngine.indicators.length > 0) showActiveTA();
+}
+
+function clearAllTA() {
+  TAEngine.clearAll();
+  updateTAButtons();
+  showToast('All studies cleared', 'info');
 }
 
 /* === INIT === */
