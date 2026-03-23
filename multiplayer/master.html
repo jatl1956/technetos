@@ -252,7 +252,7 @@
 
 <!-- ===== LOBBY SCREEN ===== -->
 <div class="lobby-overlay hidden" id="lobby-overlay">
-  <div class="lobby-box">
+  <div class="lobby-box" style="width:720px;max-width:95vw;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <h2 style="margin:0;">Master Dashboard</h2>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -267,14 +267,14 @@
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">DATA MODE</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">DATA MODE</label>
         <select id="lobby-data-mode" class="input-field" style="margin-top:2px;" onchange="onDataModeChange(this.value)">
           <option value="historical" selected>Historical (Real Data)</option>
           <option value="gbm">GBM (Simulated)</option>
         </select>
       </div>
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">SCENARIO</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">SCENARIO</label>
         <select id="lobby-scenario" class="input-field" style="margin-top:2px;">
           <option value="random">Random</option>
         </select>
@@ -283,7 +283,7 @@
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">TICKER (display name)</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">TICKER (display name)</label>
         <select id="lobby-ticker" class="input-field" style="margin-top:2px;">
           <option value="AAPL">AAPL</option><option value="MSFT">MSFT</option>
           <option value="TSLA">TSLA</option><option value="AMZN">AMZN</option>
@@ -293,7 +293,7 @@
         </select>
       </div>
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">STARTING CASH</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">STARTING CASH</label>
         <input type="number" id="lobby-cash" value="100000" class="input-field" style="margin-top:2px;">
       </div>
     </div>
@@ -301,7 +301,7 @@
     <div class="section-label" style="margin-top:12px;">MARGIN &amp; SHORT SELLING</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MAX LEVERAGE</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">MAX LEVERAGE</label>
         <select id="lobby-leverage" class="input-field" style="margin-top:2px;">
           <option value="1">1x (No Margin)</option>
           <option value="2" selected>2x</option>
@@ -310,7 +310,7 @@
         </select>
       </div>
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">SHORT SELLING</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">SHORT SELLING</label>
         <select id="lobby-short" class="input-field" style="margin-top:2px;">
           <option value="true" selected>Enabled</option>
           <option value="false">Disabled</option>
@@ -319,7 +319,7 @@
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MAINTENANCE MARGIN</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">MAINTENANCE MARGIN</label>
         <select id="lobby-maint-margin" class="input-field" style="margin-top:2px;">
           <option value="0.20">20%</option>
           <option value="0.25" selected>25%</option>
@@ -333,33 +333,64 @@
     <div class="section-label" style="margin-top:12px;">COMMISSIONS &amp; INTEREST</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">COMMISSION / SHARE</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">COMMISSION / SHARE</label>
         <input type="number" id="lobby-comm-share" value="0.005" step="0.001" min="0" class="input-field" style="margin-top:2px;">
       </div>
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MIN COMMISSION</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">MIN COMMISSION</label>
         <input type="number" id="lobby-min-comm" value="1.00" step="0.50" min="0" class="input-field" style="margin-top:2px;">
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">CASH INT. RATE (annual)</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">CASH INT. RATE (annual)</label>
         <input type="number" id="lobby-cash-rate" value="2.0" step="0.5" min="0" max="20" class="input-field" style="margin-top:2px;">
         <span style="font-size:8px;color:var(--text-muted);">%</span>
       </div>
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MARGIN INT. RATE (annual)</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">MARGIN INT. RATE (annual)</label>
         <input type="number" id="lobby-margin-rate" value="8.0" step="0.5" min="0" max="30" class="input-field" style="margin-top:2px;">
         <span style="font-size:8px;color:var(--text-muted);">%</span>
       </div>
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">MARGIN CALL GRACE (ticks)</label>
+        <label style="font-size:11px;color:var(--text-muted);letter-spacing:0.5px;">MARGIN CALL GRACE (ticks)</label>
         <input type="number" id="lobby-mc-grace" value="30" step="5" min="5" max="120" class="input-field" style="margin-top:2px;">
         <span style="font-size:8px;color:var(--text-muted);">ticks before liquidation</span>
       </div>
     </div>
 
     <button class="btn-primary" id="btn-create-room" onclick="createRoom()" style="margin-top:16px;">CREATE SESSION</button>
+
+    <!-- Scenario Equivalence Table (professor only) -->
+    <div class="section-label" style="margin-top:16px;cursor:pointer;" onclick="document.getElementById('equiv-table').style.display = document.getElementById('equiv-table').style.display === 'none' ? 'block' : 'none'">
+      SCENARIO KEY <span style="font-size:8px;color:var(--text-muted);">(click to show/hide)</span>
+    </div>
+    <div id="equiv-table" style="display:none;max-height:180px;overflow-y:auto;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:var(--radius-md);padding:4px;">
+      <table class="history-table" style="font-size:10px;">
+        <thead><tr><th>Scenario Name</th><th>Real Ticker</th><th>Sector</th></tr></thead>
+        <tbody>
+          <tr><td>Quantum Corp</td><td style="color:var(--accent-orange);">AAPL</td><td>Tech</td></tr>
+          <tr><td>Echo Robotics</td><td style="color:var(--accent-orange);">AMD</td><td>Tech</td></tr>
+          <tr><td>Nexus Digital</td><td style="color:var(--accent-orange);">AMZN</td><td>Consumer</td></tr>
+          <tr><td>Sterling Motors</td><td style="color:var(--accent-orange);">BA</td><td>Industrial</td></tr>
+          <tr><td>Polaris Finance</td><td style="color:var(--accent-orange);">BAC</td><td>Banking</td></tr>
+          <tr><td style="color:var(--accent-cyan);">Cobalt Chain</td><td style="color:var(--accent-orange);">BTCUSD</td><td style="color:var(--accent-cyan);">Crypto</td></tr>
+          <tr><td>Vertex Energy</td><td style="color:var(--accent-orange);">CVX</td><td>Energy</td></tr>
+          <tr><td style="color:var(--accent-cyan);">Meridian Chain</td><td style="color:var(--accent-orange);">ETHUSD</td><td style="color:var(--accent-cyan);">Crypto</td></tr>
+          <tr><td>NovaTech</td><td style="color:var(--accent-orange);">GOOGL</td><td>Tech</td></tr>
+          <tr><td>Zenith Capital</td><td style="color:var(--accent-orange);">GS</td><td>Banking</td></tr>
+          <tr><td>Atlas Bio</td><td style="color:var(--accent-orange);">JNJ</td><td>Healthcare</td></tr>
+          <tr><td>Orion Holdings</td><td style="color:var(--accent-orange);">JPM</td><td>Banking</td></tr>
+          <tr><td>Pinnacle Foods</td><td style="color:var(--accent-orange);">KO</td><td>Consumer</td></tr>
+          <tr><td>Apex Industries</td><td style="color:var(--accent-orange);">MSFT</td><td>Tech</td></tr>
+          <tr><td>Titan Dynamics</td><td style="color:var(--accent-orange);">NVDA</td><td>Tech</td></tr>
+          <tr><td>Crescent Pharma</td><td style="color:var(--accent-orange);">PFE</td><td>Healthcare</td></tr>
+          <tr><td>Vanguard Index</td><td style="color:var(--accent-orange);">SPY</td><td>Index</td></tr>
+          <tr><td>Helix Motors</td><td style="color:var(--accent-orange);">TSLA</td><td>Volatile</td></tr>
+          <tr><td>Sapphire Mining</td><td style="color:var(--accent-orange);">XOM</td><td>Energy</td></tr>
+        </tbody>
+      </table>
+    </div>
 
     <!-- History -->
     <div class="section-label" style="margin-top:24px;">SESSION HISTORY</div>
@@ -402,7 +433,15 @@
         <span class="logo-text">Technetos</span>
       </div>
       <div class="topbar-ticker" id="topbar-ticker">
-        <span class="ticker-symbol" id="ticker-sym">AAPL</span>
+        <select class="ticker-symbol" id="ticker-sym" style="background:transparent;border:1px solid var(--border-primary);color:var(--accent-orange);font-family:var(--font-mono);font-size:14px;font-weight:700;padding:2px 4px;cursor:pointer;border-radius:4px;" onchange="changeTicker(this.value)">
+          <option value="AAPL">AAPL</option><option value="MSFT">MSFT</option>
+          <option value="TSLA">TSLA</option><option value="AMZN">AMZN</option>
+          <option value="GOOGL">GOOGL</option><option value="NVDA">NVDA</option>
+          <option value="META">META</option><option value="JPM">JPM</option>
+          <option value="SPY">SPY</option><option value="QQQ">QQQ</option>
+          <option value="BTC">BTC</option><option value="ETH">ETH</option>
+          <option value="XYZ">XYZ</option><option value="ABC">ABC</option>
+        </select>
         <span class="ticker-price" id="ticker-price">185.00</span>
         <span class="ticker-change" id="ticker-change">+0.00</span>
         <span class="ticker-pct" id="ticker-pct">(0.00%)</span>
@@ -416,10 +455,10 @@
     </div>
     <div class="topbar-right">
       <div class="speed-group">
+        <button class="speed-btn" data-speed="0.33" onclick="setSpeed(0.33)">⅓x</button>
+        <button class="speed-btn" data-speed="0.67" onclick="setSpeed(0.67)">⅔x</button>
         <button class="speed-btn active" data-speed="1" onclick="setSpeed(1)">1x</button>
         <button class="speed-btn" data-speed="2" onclick="setSpeed(2)">2x</button>
-        <button class="speed-btn" data-speed="5" onclick="setSpeed(5)">5x</button>
-        <button class="speed-btn" data-speed="10" onclick="setSpeed(10)">10x</button>
       </div>
       <div class="control-sep"></div>
       <select id="pattern-select" class="pattern-inject-select" onchange="onPatternSelect(this.value)">
@@ -714,12 +753,17 @@ async function loadHistory() {
       cont.innerHTML = '<div style="color:var(--text-muted);font-size:10px;padding:12px;text-align:center;">No sessions yet. Create your first one above.</div>';
       return;
     }
-    let html = '<table class="history-table"><thead><tr><th>Name</th><th>Code</th><th>Ticker</th><th>Status</th><th>Students</th><th>Date</th></tr></thead><tbody>';
+    let html = '<table class="history-table"><thead><tr><th>Name</th><th>Code</th><th>Ticker</th><th>Status</th><th>Students</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
     for (const r of rooms) {
       const date = new Date(r.created_at).toLocaleDateString();
       const studentCount = r.participants?.[0]?.count || 0;
       const statusColor = r.status === 'active' ? 'var(--green)' : r.status === 'completed' ? 'var(--text-muted)' : 'var(--yellow)';
-      html += `<tr><td>${r.name}</td><td style="color:var(--accent-orange);font-weight:700;letter-spacing:1px;">${r.code}</td><td>${r.ticker}</td><td style="color:${statusColor};text-transform:uppercase;font-weight:600;">${r.status}</td><td>${studentCount}</td><td>${date}</td></tr>`;
+      let actions = '';
+      if (r.status === 'active' || r.status === 'paused') {
+        actions += `<button onclick="closeSession('${r.id}')" style="font-size:8px;padding:2px 6px;background:var(--yellow);color:#000;border:none;border-radius:3px;cursor:pointer;margin-right:2px;">CLOSE</button>`;
+      }
+      actions += `<button onclick="deleteSession('${r.id}')" style="font-size:8px;padding:2px 6px;background:var(--red);color:#fff;border:none;border-radius:3px;cursor:pointer;">DEL</button>`;
+      html += `<tr><td>${r.name}</td><td style="color:var(--accent-orange);font-weight:700;letter-spacing:1px;">${r.code}</td><td>${r.ticker}</td><td style="color:${statusColor};text-transform:uppercase;font-weight:600;">${r.status}</td><td>${studentCount}</td><td>${date}</td><td>${actions}</td></tr>`;
     }
     html += '</tbody></table>';
     cont.innerHTML = html;
@@ -852,7 +896,7 @@ async function startSession() {
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;
     const ticker = RoomManager.currentRoom.ticker;
-    document.getElementById('ticker-sym').textContent = ticker;
+    document.getElementById('ticker-sym').value = ticker;
     document.getElementById('chart-title').textContent = ticker;
     document.getElementById('ms-ticker').textContent = ticker;
     document.getElementById('ms-speed').textContent = PriceEngine.params.tickSpeedMs + 'ms';
@@ -1034,11 +1078,38 @@ function togglePlayPause() {
 
 function setSpeed(s) {
   speedMultiplier = s;
-  document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.speed) === s));
+  document.querySelectorAll('.speed-btn').forEach(b => b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed) - s) < 0.01));
   if (isPlaying) {
     clearTimeout(simInterval);
     startSimulation();
   }
+}
+
+/* === CHANGE TICKER (display name only, during simulation) === */
+function changeTicker(val) {
+  document.getElementById('chart-title').textContent = val;
+  document.getElementById('ms-ticker').textContent = val;
+  PriceEngine.params.ticker = val;
+  RoomManager.broadcastParamChange({ ticker: val });
+}
+
+/* === CLOSE/DELETE SESSION FROM HISTORY === */
+async function closeSession(roomId) {
+  try {
+    const { error } = await supabase.from('rooms').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', roomId);
+    if (error) throw error;
+    showToast('Session closed', 'info');
+    loadHistory();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+async function deleteSession(roomId) {
+  if (!confirm('Delete this session permanently?')) return;
+  try {
+    await supabase.from('participants').delete().eq('room_id', roomId);
+    await supabase.from('rooms').delete().eq('id', roomId);
+    showToast('Session deleted', 'info');
+    loadHistory();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 /* === DATA MODE & SCENARIO HELPERS === */
