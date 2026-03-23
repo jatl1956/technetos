@@ -264,10 +264,26 @@
     <!-- Create New Room -->
     <div class="section-label">CREATE NEW SESSION</div>
     <input type="text" id="room-name" placeholder="Session Name (e.g. Class 101 - Week 3)" class="input-field">
-    
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
       <div>
-        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">TICKER</label>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">DATA MODE</label>
+        <select id="lobby-data-mode" class="input-field" style="margin-top:2px;" onchange="onDataModeChange(this.value)">
+          <option value="historical" selected>Historical (Real Data)</option>
+          <option value="gbm">GBM (Simulated)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">SCENARIO</label>
+        <select id="lobby-scenario" class="input-field" style="margin-top:2px;">
+          <option value="random">Random</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+      <div>
+        <label style="font-size:9px;color:var(--text-muted);letter-spacing:0.5px;">TICKER (display name)</label>
         <select id="lobby-ticker" class="input-field" style="margin-top:2px;">
           <option value="AAPL">AAPL</option><option value="MSFT">MSFT</option>
           <option value="TSLA">TSLA</option><option value="AMZN">AMZN</option>
@@ -513,12 +529,24 @@
       </div>
 
       <div class="ms-section">
-        <div class="ms-section-title">GBM PARAMETERS</div>
+        <div class="ms-section-title" id="ms-mode-title">PRICE DATA</div>
         <div class="ms-stat-row">
+          <span class="ms-stat-label">Mode</span>
+          <span class="ms-stat-value" id="ms-mode">Historical</span>
+        </div>
+        <div class="ms-stat-row" id="ms-scenario-row">
+          <span class="ms-stat-label">Scenario</span>
+          <span class="ms-stat-value" id="ms-scenario">--</span>
+        </div>
+        <div class="ms-stat-row" id="ms-remaining-row">
+          <span class="ms-stat-label">Remaining</span>
+          <span class="ms-stat-value" id="ms-remaining">--</span>
+        </div>
+        <div class="ms-stat-row" id="ms-drift-row" style="display:none;">
           <span class="ms-stat-label">Drift (μ)</span>
           <span class="ms-stat-value" id="ms-drift">0.08</span>
         </div>
-        <div class="ms-stat-row">
+        <div class="ms-stat-row" id="ms-vol-row" style="display:none;">
           <span class="ms-stat-label">Volatility (σ)</span>
           <span class="ms-stat-value" id="ms-vol">0.25</span>
         </div>
@@ -601,6 +629,8 @@
 <script src="./supabase-config.js"></script>
 <script src="./auth.js"></script>
 <script src="./room-manager.js"></script>
+<script src="./historical-data.js"></script>
+<script src="./historical-bundle.js"></script>
 <script src="./price-engine.js"></script>
 <script src="./order-engine.js"></script>
 <script src="./ta-engine.js"></script>
@@ -701,6 +731,11 @@ async function createRoom() {
   const name = document.getElementById('room-name').value.trim();
   if (!name) { showToast('Enter a session name.', 'error'); return; }
 
+  // Store data mode for startSession
+  window._sessionDataMode = document.getElementById('lobby-data-mode').value || 'historical';
+  const scenarioSel = document.getElementById('lobby-scenario').value;
+  window._sessionScenarioIndex = (scenarioSel === 'random') ? null : parseInt(scenarioSel);
+
   const ticker = document.getElementById('lobby-ticker').value;
   const cash = parseFloat(document.getElementById('lobby-cash').value) || 100000;
   const maxLeverage = parseFloat(document.getElementById('lobby-leverage').value) || 2;
@@ -793,6 +828,11 @@ async function startSession() {
     document.getElementById('waiting-overlay').classList.add('hidden');
     document.getElementById('sim-container').classList.remove('hidden');
 
+    // Set data mode
+    const dataMode = window._sessionDataMode || 'historical';
+    const scenarioIdx = window._sessionScenarioIndex;
+    PriceEngine.mode = dataMode;
+
     // Init price engine
     PriceEngine.reset({
       ticker: RoomManager.currentRoom.ticker,
@@ -800,7 +840,8 @@ async function startSession() {
       drift: parseFloat(RoomManager.currentRoom.drift),
       volatility: parseFloat(RoomManager.currentRoom.volatility),
       tickSpeedMs: RoomManager.currentRoom.tick_speed_ms,
-      spreadBps: RoomManager.currentRoom.spread_bps
+      spreadBps: RoomManager.currentRoom.spread_bps,
+      scenarioIndex: scenarioIdx
     });
 
     // Init order engine params
@@ -808,12 +849,31 @@ async function startSession() {
 
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;
-    document.getElementById('ticker-sym').textContent = RoomManager.currentRoom.ticker;
-    document.getElementById('chart-title').textContent = RoomManager.currentRoom.ticker;
-    document.getElementById('ms-ticker').textContent = RoomManager.currentRoom.ticker;
-    document.getElementById('ms-drift').textContent = PriceEngine.params.drift;
-    document.getElementById('ms-vol').textContent = PriceEngine.params.volatility;
+    const ticker = RoomManager.currentRoom.ticker;
+    document.getElementById('ticker-sym').textContent = ticker;
+    document.getElementById('chart-title').textContent = ticker;
+    document.getElementById('ms-ticker').textContent = ticker;
     document.getElementById('ms-speed').textContent = PriceEngine.params.tickSpeedMs + 'ms';
+
+    // Update sidebar based on mode
+    const info = PriceEngine.getScenarioInfo();
+    if (info.mode === 'historical') {
+      document.getElementById('ms-mode').textContent = 'Historical';
+      document.getElementById('ms-scenario').textContent = info.scenarioName || 'Random';
+      document.getElementById('ms-remaining').textContent = info.remaining + ' candles';
+      document.getElementById('ms-scenario-row').style.display = '';
+      document.getElementById('ms-remaining-row').style.display = '';
+      document.getElementById('ms-drift-row').style.display = 'none';
+      document.getElementById('ms-vol-row').style.display = 'none';
+    } else {
+      document.getElementById('ms-mode').textContent = 'GBM';
+      document.getElementById('ms-scenario-row').style.display = 'none';
+      document.getElementById('ms-remaining-row').style.display = 'none';
+      document.getElementById('ms-drift-row').style.display = '';
+      document.getElementById('ms-vol-row').style.display = '';
+      document.getElementById('ms-drift').textContent = PriceEngine.params.drift;
+      document.getElementById('ms-vol').textContent = PriceEngine.params.volatility;
+    }
     // Margin & fees sidebar
     const sp = OrderEngine.sessionParams;
     document.getElementById('ms-leverage').textContent = sp.maxLeverage + 'x';
@@ -888,6 +948,16 @@ function startSimulation() {
     if (!isPlaying) return;
     
     const candle = PriceEngine.nextCandle();
+
+    // Historical mode: null means series exhausted
+    if (!candle) {
+      isPlaying = false;
+      showToast('Historical data exhausted — simulation ended', 'info');
+      document.getElementById('icon-pause').style.display = 'none';
+      document.getElementById('icon-play').style.display = '';
+      RoomManager.broadcastControl('pause');
+      return;
+    }
     
     // Update chart
     candleSeries.update(candle);
@@ -905,6 +975,12 @@ function startSimulation() {
     // Update sidebar stats
     document.getElementById('ms-price').textContent = '$' + candle.close.toFixed(2);
     document.getElementById('ms-candles').textContent = PriceEngine.tickIndex;
+
+    // Update remaining counter in historical mode
+    if (PriceEngine.mode === 'historical') {
+      const rem = HistoricalData.remaining();
+      document.getElementById('ms-remaining').textContent = rem + ' candles';
+    }
 
     // Broadcast to students
     RoomManager.broadcastPriceTick(candle);
@@ -940,6 +1016,31 @@ function setSpeed(s) {
     clearTimeout(simInterval);
     startSimulation();
   }
+}
+
+/* === DATA MODE & SCENARIO HELPERS === */
+function onDataModeChange(mode) {
+  const scenarioSel = document.getElementById('lobby-scenario');
+  if (mode === 'historical') {
+    populateScenarios();
+    scenarioSel.parentElement.style.display = '';
+  } else {
+    scenarioSel.parentElement.style.display = 'none';
+  }
+}
+function populateScenarios() {
+  const sel = document.getElementById('lobby-scenario');
+  sel.innerHTML = '<option value="random">Random</option>';
+  if (HistoricalData.isLoaded()) {
+    const names = HistoricalData.SCENARIO_NAMES;
+    for (let i = 0; i < names.length; i++) {
+      sel.innerHTML += '<option value="' + i + '">' + names[i] + '</option>';
+    }
+  }
+}
+// Populate on load
+if (typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
+  populateScenarios();
 }
 
 function onPatternSelect(val) {

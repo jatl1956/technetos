@@ -1,6 +1,8 @@
 /* =========================================================
    Technetos Multiplayer — Price Engine
-   GBM price generation + OHLC candle formation
+   Supports two modes:
+   1. HISTORICAL (default): replays real market data
+   2. GBM: generates synthetic prices via Geometric Brownian Motion
    Runs in the Master's browser, broadcasts via Realtime
    ========================================================= */
 
@@ -11,6 +13,14 @@ const PriceEngine = {
   tickIndex: 0,
   _baseTime: 0,
   candles: [],
+
+  // Mode: 'historical' or 'gbm'
+  mode: 'historical',
+
+  // Historical mode state
+  _histScenarioName: null,   // fictitious name shown to users
+  _histTotalCandles: 0,
+
   params: {
     ticker: 'AAPL',
     initialPrice: 185.0,
@@ -176,19 +186,52 @@ const PriceEngine = {
     return false;
   },
 
-  /** Generate the next candle */
+  /** Generate the next candle — dispatches to historical or GBM mode */
   nextCandle() {
+    if (this.mode === 'historical') {
+      return this._nextCandleHistorical();
+    }
+    return this._nextCandleGBM();
+  },
+
+  /** Historical mode: replay real market data */
+  _nextCandleHistorical() {
+    const raw = HistoricalData.nextCandle();
+    if (!raw) {
+      // Series exhausted — signal end
+      return null;
+    }
+
+    this.price = raw.close;
+    this.prevClose = raw.close;
+    this.tickIndex = raw.tickIndex;
+
+    const candle = {
+      time: raw.time,
+      open: raw.open,
+      high: raw.high,
+      low: raw.low,
+      close: raw.close,
+      bid: raw.bid,
+      ask: raw.ask,
+      spread: raw.spread,
+      ticker: this.params.ticker,
+      tickIndex: raw.tickIndex
+    };
+
+    this.candles.push(candle);
+    return candle;
+  },
+
+  /** GBM mode: generate synthetic prices */
+  _nextCandleGBM() {
     let ohlc;
     let patternName = null;
     let patternPhase = null;
 
     if (this._patternActive && this._patternIndex < this._patternQueue.length) {
-      // === PATTERN MODE ===
-      // Multiplier is applied to the FIXED base price (price when pattern started)
       const mult = this._patternQueue[this._patternIndex];
       const targetClose = this._patternBasePrice * mult;
-
-      // Generate candle with close forced to pattern target
       ohlc = this._patternOHLC(targetClose, this.prevClose);
       this._patternIndex++;
       patternPhase = 'active';
@@ -198,16 +241,12 @@ const PriceEngine = {
         this._ticksSincePattern = 0;
       }
     } else {
-      // === NORMAL GBM MODE ===
       const basePrice = this._gbmStep();
       ohlc = this._realisticOHLC(basePrice, this.params.volatility, this.prevClose);
 
-      // If a pattern was manually selected, launch it IMMEDIATELY
       if (this.params.selectedPattern && this.params.selectedPattern !== 'random') {
         this._startPattern();
-      }
-      // Otherwise check natural pattern injection timing
-      else if (this._shouldInjectPattern() && this.params.enabledPatterns.length > 0) {
+      } else if (this._shouldInjectPattern() && this.params.enabledPatterns.length > 0) {
         this._startPattern();
       }
     }
@@ -388,13 +427,29 @@ const PriceEngine = {
   /** Reset engine */
   reset(params) {
     if (params) Object.assign(this.params, params);
-    this.price = this.params.initialPrice;
-    this.prevClose = this.params.initialPrice;
     this.tickIndex = 0;
-    // Base time: use current time so chart X-axis works correctly
-    // Each tick = 1 second apart (Lightweight Charts needs ascending UNIX timestamps)
-    this._baseTime = Math.floor(Date.now() / 1000);
     this.candles = [];
+
+    if (this.mode === 'historical' && HistoricalData.isLoaded()) {
+      // Historical mode: prepare a series
+      const scenarioIndex = params && params.scenarioIndex != null ? params.scenarioIndex : null;
+      const result = HistoricalData.prepareSeries(scenarioIndex, {
+        maxCandles: 500,
+        targetPrice: this.params.initialPrice || null
+      });
+      this._histScenarioName = result.scenarioName;
+      this._histTotalCandles = result.totalCandles;
+      this.price = result.initialPrice;
+      this.prevClose = result.initialPrice;
+      this.params.initialPrice = result.initialPrice;
+    } else {
+      // GBM mode
+      this.mode = 'gbm';
+      this.price = this.params.initialPrice;
+      this.prevClose = this.params.initialPrice;
+    }
+
+    this._baseTime = Math.floor(Date.now() / 1000);
     this._patternQueue = [];
     this._patternIndex = 0;
     this._patternActive = false;
@@ -405,5 +460,18 @@ const PriceEngine = {
   /** Update params live */
   updateParams(newParams) {
     Object.assign(this.params, newParams);
+  },
+
+  /** Get scenario info (for UI display) */
+  getScenarioInfo() {
+    if (this.mode === 'historical') {
+      return {
+        mode: 'historical',
+        scenarioName: this._histScenarioName,
+        totalCandles: this._histTotalCandles,
+        remaining: HistoricalData.remaining()
+      };
+    }
+    return { mode: 'gbm', scenarioName: null };
   }
 };

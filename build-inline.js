@@ -16,6 +16,8 @@ const roomManagerJs = fs.readFileSync(path.join(MULTI, 'room-manager.js'), 'utf-
 const priceEngineJs = fs.readFileSync(path.join(MULTI, 'price-engine.js'), 'utf-8');
 const orderEngineJs = fs.readFileSync(path.join(MULTI, 'order-engine.js'), 'utf-8');
 const taEngineJs = fs.readFileSync(path.join(MULTI, 'ta-engine.js'), 'utf-8');
+const historicalDataJs = fs.readFileSync(path.join(MULTI, 'historical-data.js'), 'utf-8');
+const historicalBundleJs = fs.readFileSync(path.join(MULTI, 'historical-bundle.js'), 'utf-8');
 
 // Polyfill injected BEFORE Supabase CDN to prevent SecurityError on navigator.locks
 // In sandboxed iframes, locks exists but .request() throws SecurityError
@@ -57,11 +59,13 @@ function buildInlineHtml(htmlFile, jsModules) {
   return html;
 }
 
-// Master uses all 6 JS modules
+// Master uses all JS modules including historical data
 const masterModules = [
   { file: 'supabase-config.js', content: supabaseConfig },
   { file: 'auth.js', content: authJs },
   { file: 'room-manager.js', content: roomManagerJs },
+  { file: 'historical-data.js', content: historicalDataJs },
+  { file: 'historical-bundle.js', content: historicalBundleJs },
   { file: 'price-engine.js', content: priceEngineJs },
   { file: 'order-engine.js', content: orderEngineJs },
   { file: 'ta-engine.js', content: taEngineJs },
