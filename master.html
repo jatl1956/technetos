@@ -2296,13 +2296,28 @@ const HistoricalData = {
   _sourceKey: null,   // which ticker was selected (internal, not exposed)
   _transform: null,   // { scale, offset } applied
 
-  // Scenario names — fictitious, so students can't identify the real ticker
+  // Scenario names — fictitious for students, with sector hint for professor
+  // Order matches alphabetical ticker keys: AAPL, AMD, AMZN, BA, BAC, BTCUSD, CVX, ETHUSD, GOOGL, GS, JNJ, JPM, KO, MSFT, NVDA, PFE, SPY, TSLA, XOM
   SCENARIO_NAMES: [
-    'Quantum Corp', 'Apex Industries', 'NovaTech', 'Orion Holdings',
-    'Titan Dynamics', 'Vertex Energy', 'Cobalt Systems', 'Meridian Group',
-    'Zenith Capital', 'Atlas Bio', 'Helix Networks', 'Polaris Finance',
-    'Vanguard Micro', 'Crescent Pharma', 'Sterling Motors', 'Nexus Digital',
-    'Sapphire Mining', 'Echo Robotics', 'Pinnacle Foods'
+    'Quantum Corp (Tech)',         // AAPL
+    'Echo Robotics (Tech)',        // AMD
+    'Nexus Digital (Consumer)',     // AMZN
+    'Sterling Motors (Industrial)',// BA
+    'Polaris Finance (Banking)',   // BAC
+    'Cobalt Chain (Crypto)',       // BTCUSD
+    'Vertex Energy (Energy)',      // CVX
+    'Meridian Chain (Crypto)',     // ETHUSD
+    'NovaTech (Tech)',             // GOOGL
+    'Zenith Capital (Banking)',    // GS
+    'Atlas Bio (Healthcare)',      // JNJ
+    'Orion Holdings (Banking)',    // JPM
+    'Pinnacle Foods (Consumer)',   // KO
+    'Apex Industries (Tech)',      // MSFT
+    'Titan Dynamics (Tech)',       // NVDA
+    'Crescent Pharma (Healthcare)',// PFE
+    'Vanguard Index (Index)',      // SPY
+    'Helix Motors (Volatile)',     // TSLA
+    'Sapphire Mining (Energy)'    // XOM
   ],
 
   /** Load the bundle (called once at page load) */
@@ -4090,6 +4105,7 @@ async function showLobby() {
   document.getElementById('auth-overlay').classList.add('hidden');
   document.getElementById('lobby-overlay').classList.remove('hidden');
   document.getElementById('lobby-user-email').textContent = Auth.currentUser.email;
+  populateScenarios();  // ensure scenario dropdown is populated
   loadHistory();
 }
 
@@ -4448,10 +4464,12 @@ function populateScenarios() {
     }
   }
 }
-// Populate on load
-if (typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
-  populateScenarios();
-}
+// Populate scenarios after a tick (ensures bundle is loaded)
+setTimeout(function() {
+  if (typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
+    populateScenarios();
+  }
+}, 100);
 
 function onPatternSelect(val) {
   PriceEngine.params.selectedPattern = val || null;

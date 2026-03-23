@@ -702,6 +702,7 @@ async function showLobby() {
   document.getElementById('auth-overlay').classList.add('hidden');
   document.getElementById('lobby-overlay').classList.remove('hidden');
   document.getElementById('lobby-user-email').textContent = Auth.currentUser.email;
+  populateScenarios();  // ensure scenario dropdown is populated
   loadHistory();
 }
 
@@ -1060,10 +1061,12 @@ function populateScenarios() {
     }
   }
 }
-// Populate on load
-if (typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
-  populateScenarios();
-}
+// Populate scenarios after a tick (ensures bundle is loaded)
+setTimeout(function() {
+  if (typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
+    populateScenarios();
+  }
+}, 100);
 
 function onPatternSelect(val) {
   PriceEngine.params.selectedPattern = val || null;
