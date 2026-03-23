@@ -107,8 +107,8 @@
 
 /* Master sidebar panel */
 .master-sidebar {
-  width: 280px; background: var(--bg-panel); border-left: 1px solid var(--border-primary);
-  display: flex; flex-direction: column; overflow-y: auto;
+  width: 280px; min-width: 280px; background: var(--bg-panel); border-left: 1px solid var(--border-primary);
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
 }
 .master-sidebar .panel-header { flex-shrink: 0; }
 .ms-section {
@@ -739,8 +739,13 @@ async function loadHistory() {
       cont.innerHTML = '<div style="color:var(--text-muted);font-size:10px;padding:12px;text-align:center;">No sessions yet. Create your first one above.</div>';
       return;
     }
+    const visibleRooms = rooms.filter(r => r.status !== 'deleted');
+    if (visibleRooms.length === 0) {
+      cont.innerHTML = '<div style="color:var(--text-muted);font-size:10px;padding:12px;text-align:center;">No sessions yet. Create your first one above.</div>';
+      return;
+    }
     let html = '<table class="history-table"><thead><tr><th>Name</th><th>Code</th><th>Ticker</th><th>Status</th><th>Students</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
-    for (const r of rooms) {
+    for (const r of visibleRooms) {
       const date = new Date(r.created_at).toLocaleDateString();
       const studentCount = r.participants?.[0]?.count || 0;
       const statusColor = r.status === 'active' ? 'var(--green)' : r.status === 'completed' ? 'var(--text-muted)' : 'var(--yellow)';
@@ -1123,21 +1128,22 @@ function changeTicker(val) {
 async function closeSession(roomId) {
   try {
     const sb = SupabaseConfig.getClient();
-    const { error } = await sb.from('rooms').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', roomId);
+    const { error } = await sb.from('rooms').update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', roomId);
     if (error) throw error;
     showToast('Session closed', 'info');
     loadHistory();
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) { showToast('Close failed: ' + e.message, 'error'); }
 }
 async function deleteSession(roomId) {
   if (!confirm('Delete this session permanently?')) return;
   try {
     const sb = SupabaseConfig.getClient();
-    await sb.from('participants').delete().eq('room_id', roomId);
-    await sb.from('rooms').delete().eq('id', roomId);
+    // Mark as deleted (avoids RLS delete restrictions)
+    const { error } = await sb.from('rooms').update({ status: 'deleted', updated_at: new Date().toISOString() }).eq('id', roomId);
+    if (error) throw error;
     showToast('Session deleted', 'info');
     loadHistory();
-  } catch (e) { showToast(e.message, 'error'); }
+  } catch (e) { showToast('Delete failed: ' + e.message, 'error'); }
 }
 
 /* === DATA MODE & SCENARIO HELPERS === */
@@ -1166,16 +1172,6 @@ setTimeout(function() {
     populateScenarios();
   }
 }, 100);
-
-function onPatternSelect(val) {
-  PriceEngine.params.selectedPattern = val || null;
-  RoomManager.broadcastParamChange({ selectedPattern: val || null });
-}
-// When a pattern fires once, reset the dropdown back to "-- Pattern --"
-PriceEngine.onPatternReset = function() {
-  document.getElementById('pattern-select').value = '';
-  RoomManager.broadcastParamChange({ selectedPattern: null });
-};
 
 /* === SETTINGS === */
 function openSettings() {
