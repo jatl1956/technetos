@@ -3174,15 +3174,19 @@ async function startSession() {
     // Init order engine params
     OrderEngine.initParams(RoomManager.currentRoom);
 
-    // Fase E.1 + E.2 (Codex v11 P2): persist the replay identity BEFORE
-    // marking the room active and starting the tick loop. We await the
-    // write and abort the whole startSession on failure for historical
-    // sessions — without persisted identity, a refresh produces a
-    // different series than students saw (the v10 P1 bug).
+    // Fase E.1 + E.2 + E.3 (Codex v12 P2): persist the data mode and
+    // (for historical) the replay identity BEFORE marking the room
+    // active and starting the tick loop. We await the write and abort
+    // startSession on failure for ALL modes — not just historical.
     //
-    // For GBM sessions the identity is null and a missing write only
-    // costs a slightly older recovery point, so we treat it as
-    // best-effort and only log on failure.
+    // Why GBM also blocks: persistMasterMode writes data_mode for every
+    // session. If the write fails, the DB default is 'historical' and
+    // resumeSession's `room.data_mode || 'historical'` fallback would
+    // route a GBM session through the historical path on refresh,
+    // breaking continuity. So data_mode persistence is required, period.
+    //
+    // What's mode-specific: the replay identity (sourceKey, startDay,
+    // mirror, targetPrice). Those only matter for historical replay.
     const replayIdentity = (dataMode === 'historical' && resetResult) ? {
       sourceKey:   resetResult.sourceKey,
       startDay:    resetResult.startDay,
@@ -3197,13 +3201,16 @@ async function startSession() {
       scenarioIndex: replayIdentity ? resetResult.scenarioIndex : (scenarioIdx == null ? null : scenarioIdx),
       replayIdentity
     });
-    if (dataMode === 'historical' && persistResult && !persistResult.ok) {
-      // Identity didn't persist. The room is still in 'waiting' status
-      // (we haven't called startRoom() yet) so we just throw — the room
-      // remains creatable/discardable from the master's lobby.
+    if (persistResult && !persistResult.ok) {
+      // Persist failed. Room is still 'waiting' (startRoom hasn't run).
+      // The error message is mode-specific so the master understands
+      // which migration / RLS issue to investigate.
+      const reason = (dataMode === 'historical')
+        ? 'replay identity (deterministic resume would be unreliable)'
+        : 'data_mode (resume would default to historical and break continuity)';
       throw new Error(
-        'Could not persist replay identity (historical resume would be unreliable). ' +
-        'Check that migration 006 columns exist on rooms. Underlying error: ' +
+        'Could not persist ' + reason + '. ' +
+        'Check migration 005 / 006 columns on rooms. Underlying error: ' +
         (persistResult.error || 'unknown')
       );
     }
