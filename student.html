@@ -774,14 +774,28 @@ const RoomManager = {
     }
   },
 
-  /** Persist the data mode and scenario index once at session start. */
-  async persistMasterMode({ dataMode, scenarioIndex }) {
+  /**
+   * Fase E.1: persist the FULL replay identity once at session start.
+   * This includes the resolved sourceKey, startDay, mirror, and targetPrice
+   * — the four randomized inputs to HistoricalData.prepareSeries — so
+   * resumeSession can reconstruct the exact same series after a refresh.
+   *
+   * For GBM sessions, replayIdentity is null; only data_mode is set.
+   */
+  async persistMasterMode({ dataMode, scenarioIndex, replayIdentity }) {
     if (!this.currentRoom) return;
     const sb = getSupabase();
+    const update = { data_mode: dataMode, scenario_index: scenarioIndex };
+    if (replayIdentity) {
+      update.source_key = replayIdentity.sourceKey != null ? replayIdentity.sourceKey : null;
+      update.start_day = replayIdentity.startDay != null ? replayIdentity.startDay : null;
+      update.mirror = (replayIdentity.mirror === true || replayIdentity.mirror === false) ? replayIdentity.mirror : null;
+      update.target_price = replayIdentity.targetPrice != null ? replayIdentity.targetPrice : null;
+    }
     try {
       const { error } = await sb
         .from('rooms')
-        .update({ data_mode: dataMode, scenario_index: scenarioIndex })
+        .update(update)
         .eq('id', this.currentRoom.id);
       if (error) console.warn('[persistMasterMode] failed:', error.message);
     } catch (e) {

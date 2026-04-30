@@ -18,8 +18,10 @@ async function startSession() {
     const scenarioIdx = window._sessionScenarioIndex;
     PriceEngine.mode = dataMode;
 
-    // Init price engine
-    PriceEngine.reset({
+    // Init price engine. In historical mode, reset() returns the resolved
+    // replay identity (sourceKey, startDay, mirror, targetPrice) so we can
+    // persist it for deterministic resume.
+    const resetResult = PriceEngine.reset({
       ticker: RoomManager.currentRoom.ticker,
       initialPrice: parseFloat(RoomManager.currentRoom.initial_price),
       drift: parseFloat(RoomManager.currentRoom.drift),
@@ -32,12 +34,21 @@ async function startSession() {
     // Init order engine params
     OrderEngine.initParams(RoomManager.currentRoom);
 
-    // Fase E: persist data mode + scenario index once so a future refresh
-    // can rehydrate the engine in the same mode. Per-tick state is saved
-    // by the sim loop.
+    // Fase E.1: persist the full replay identity (not just scenario index).
+    // resetResult is null for GBM, populated for historical.
+    const replayIdentity = (dataMode === 'historical' && resetResult) ? {
+      sourceKey:   resetResult.sourceKey,
+      startDay:    resetResult.startDay,
+      mirror:      resetResult.mirror,
+      targetPrice: resetResult.targetPrice
+    } : null;
     RoomManager.persistMasterMode({
       dataMode,
-      scenarioIndex: scenarioIdx == null ? null : scenarioIdx
+      // For random scenarios, persist the resolved index so resume picks the
+      // same ticker (otherwise scenarioIndex was null and resume would
+      // re-randomize).
+      scenarioIndex: replayIdentity ? resetResult.scenarioIndex : (scenarioIdx == null ? null : scenarioIdx),
+      replayIdentity
     });
 
     // Update UI
