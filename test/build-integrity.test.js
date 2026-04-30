@@ -19,7 +19,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..');
 const DIST_STUDENT = path.join(REPO, 'dist', 'multiplayer', 'student.html');
+const DIST_MASTER  = path.join(REPO, 'dist', 'multiplayer', 'master.html');
 const ROOT_STUDENT = path.join(REPO, 'student.html');
+const ROOT_MASTER  = path.join(REPO, 'master.html');
 const MULTI = path.join(REPO, 'multiplayer');
 
 const STUDENT_MODULES = [
@@ -36,14 +38,34 @@ const STUDENT_MODULES = [
   'student-beacon.js'
 ];
 
-describe('build integrity (Fase C.1)', () => {
-  let dist, root;
+const MASTER_MODULES = [
+  'master-state.js',
+  'master-auth.js',
+  'master-lobby.js',
+  'master-waiting.js',
+  'master-sim-start.js',
+  'master-chart.js',
+  'master-sim-loop.js',
+  'master-ticker.js',
+  'master-settings.js',
+  'master-end.js',
+  'master-leaderboard.js',
+  'master-timer.js',
+  'master-toast.js',
+  'master-ta-tools.js',
+  'master-init.js'
+];
+
+describe('build integrity (Fase C.1 + C.2)', () => {
+  let dist, root, distMaster, rootMaster;
 
   beforeAll(() => {
     // Re-run the build so we test the current state, not stale output.
     execSync('node build-inline.js', { cwd: REPO, stdio: 'pipe' });
     dist = fs.readFileSync(DIST_STUDENT, 'utf-8');
     root = fs.readFileSync(ROOT_STUDENT, 'utf-8');
+    distMaster = fs.readFileSync(DIST_MASTER, 'utf-8');
+    rootMaster = fs.readFileSync(ROOT_MASTER, 'utf-8');
   });
 
   it('all student-*.js module files exist on disk', () => {
@@ -53,9 +75,23 @@ describe('build integrity (Fase C.1)', () => {
     }
   });
 
+  it('all master-*.js module files exist on disk', () => {
+    for (const mod of MASTER_MODULES) {
+      const p = path.join(MULTI, mod);
+      expect(fs.existsSync(p), `missing module: ${mod}`).toBe(true);
+    }
+  });
+
   it('source multiplayer/student.html references all 11 student-*.js modules', () => {
     const src = fs.readFileSync(path.join(MULTI, 'student.html'), 'utf-8');
     for (const mod of STUDENT_MODULES) {
+      expect(src, `source missing <script src=./${mod}>`).toContain(`<script src="./${mod}"></script>`);
+    }
+  });
+
+  it('source multiplayer/master.html references all 15 master-*.js modules', () => {
+    const src = fs.readFileSync(path.join(MULTI, 'master.html'), 'utf-8');
+    for (const mod of MASTER_MODULES) {
       expect(src, `source missing <script src=./${mod}>`).toContain(`<script src="./${mod}"></script>`);
     }
   });
@@ -72,11 +108,25 @@ describe('build integrity (Fase C.1)', () => {
     expect(matches).toBeNull();
   });
 
+  it('inlined dist/master.html has NO unresolved <script src="./master-*.js"> tags', () => {
+    const matches = distMaster.match(/<script src="\.\/master-[a-z-]+\.js"><\/script>/g);
+    expect(matches).toBeNull();
+  });
+
+  it('inlined root master.html has NO unresolved <script src="./master-*.js"> tags', () => {
+    const matches = rootMaster.match(/<script src="\.\/master-[a-z-]+\.js"><\/script>/g);
+    expect(matches).toBeNull();
+  });
+
   it('dist and root student.html are byte-identical (single source of truth)', () => {
     expect(dist).toBe(root);
   });
 
-  it('inlined output preserves critical entry points', () => {
+  it('dist and root master.html are byte-identical (single source of truth)', () => {
+    expect(distMaster).toBe(rootMaster);
+  });
+
+  it('inlined student output preserves critical entry points', () => {
     // Sample functions from each module — if any module dropped or got
     // double-inlined, these counts would go off.
     const checks = [
@@ -94,6 +144,43 @@ describe('build integrity (Fase C.1)', () => {
       expect(count, `${fn}: found ${count}, expected ${min}..${max}`).toBeGreaterThanOrEqual(min);
       expect(count, `${fn}: found ${count}, expected ${min}..${max}`).toBeLessThanOrEqual(max);
     }
+  });
+
+  it('inlined master output preserves critical entry points', () => {
+    // The student modules also live in master.html, so functions like
+    // showToast / toggleAuthMode appear once from master-* and (if shared)
+    // could re-appear from student-* — but master.html only inlines
+    // master-*.js, never student-*.js. So each function should be exactly 1.
+    const checks = [
+      { fn: 'function toggleAuthMode',  min: 1, max: 1 }, // master-auth.js
+      { fn: 'async function createRoom', min: 1, max: 1 }, // master-lobby.js
+      { fn: 'async function startSession', min: 1, max: 1 }, // master-sim-start.js
+      { fn: 'function startSimulation', min: 1, max: 1 }, // master-sim-loop.js
+      { fn: 'function togglePlayPause', min: 1, max: 1 }, // master-sim-loop.js
+      { fn: 'function setSpeed',        min: 1, max: 1 }, // master-sim-loop.js
+      { fn: 'function changeTicker',    min: 1, max: 1 }, // master-ticker.js
+      { fn: 'async function endSession', min: 1, max: 1 }, // master-end.js
+      { fn: 'function showToast',       min: 1, max: 1 }, // master-toast.js
+    ];
+    for (const { fn, min, max } of checks) {
+      const count = (distMaster.match(new RegExp(fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+      expect(count, `${fn}: found ${count}, expected ${min}..${max}`).toBeGreaterThanOrEqual(min);
+      expect(count, `${fn}: found ${count}, expected ${min}..${max}`).toBeLessThanOrEqual(max);
+    }
+  });
+
+  it('master.html does NOT contain student-only modules (no cross-pollination)', () => {
+    // Defends against a future build-inline.js bug where student modules
+    // get accidentally inlined into master.html or vice versa.
+    expect(distMaster).not.toContain('function _sendOfflineBeacon'); // student-beacon.js
+    expect(distMaster).not.toContain('function processLocalOrders');  // student-orders-process.js
+    expect(distMaster).not.toContain('function showMarginCallBanner'); // student-margin.js
+  });
+
+  it('student.html does NOT contain master-only modules', () => {
+    expect(dist).not.toContain('async function createRoom');     // master-lobby.js
+    expect(dist).not.toContain('async function endSession');     // master-end.js
+    expect(dist).not.toContain('function startSimulation');      // master-sim-loop.js
   });
 
   it('Fase D/D.2 beacon code is intact in inlined output', () => {

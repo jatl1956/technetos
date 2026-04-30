@@ -2578,6 +2578,11 @@ if (typeof module !== 'undefined' && module.exports) {
 </script>
 <script>
 /* =========================================================
+   Technetos Multiplayer — Master
+   Module: state — globals (authMode, chart, simInterval, isPlaying, speedMultiplier)
+   ========================================================= */
+
+/* =========================================================
    MASTER CONTROLLER
    ========================================================= */
 let authMode = 'signin';
@@ -2588,6 +2593,13 @@ let simInterval = null;
 let isPlaying = false;
 let speedMultiplier = 1;
 let startTime = null;
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: auth — toggleAuthMode + doLogin
+   ========================================================= */
 
 /* === AUTH === */
 function toggleAuthMode() {
@@ -2639,6 +2651,13 @@ async function handleSignOut() {
   document.getElementById('sim-container').classList.add('hidden');
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: lobby + create room
+   ========================================================= */
+
 /* === LOBBY === */
 async function showLobby() {
   document.getElementById('auth-overlay').classList.add('hidden');
@@ -2689,6 +2708,13 @@ async function createRoom() {
   }
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: waiting room (lobby for joining students)
+   ========================================================= */
+
 /* === WAITING ROOM === */
 var waitingPollInterval = null;
 function showWaitingRoom() {
@@ -2737,6 +2763,13 @@ async function cancelSession() {
   document.getElementById('waiting-overlay').classList.add('hidden');
   document.getElementById('lobby-overlay').classList.remove('hidden');
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: start simulation (begin tick loop, init engines)
+   ========================================================= */
 
 /* === START SIMULATION === */
 async function startSession() {
@@ -2812,6 +2845,13 @@ async function startSession() {
   }
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: chart init + updateChart
+   ========================================================= */
+
 /* === CHART === */
 function initChart() {
   const container = document.getElementById('chart-container');
@@ -2871,6 +2911,13 @@ function initChart() {
     if (consumed) updateTAButtons();
   });
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: simulation loop (tick generation, broadcast, processOrders)
+   ========================================================= */
 
 /* === SIMULATION LOOP === */
 function startSimulation() {
@@ -2959,6 +3006,13 @@ function setSpeed(s) {
   }
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: change ticker + data mode & scenario helpers
+   ========================================================= */
+
 /* === CHANGE TICKER — restarts with a new random scenario === */
 function changeTicker(val) {
   // Update display name
@@ -3034,6 +3088,13 @@ setTimeout(function() {
   }
 }, 100);
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: settings panel (params, toggles)
+   ========================================================= */
+
 /* === SETTINGS === */
 function openSettings() {
   document.getElementById('param-drift').value = PriceEngine.params.drift;
@@ -3086,6 +3147,13 @@ function applySettings() {
   showToast('Parameters updated live.', 'info');
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: end session
+   ========================================================= */
+
 /* === END SESSION === */
 async function endSession() {
   if (!confirm('End this session? Students will be disconnected.')) return;
@@ -3104,6 +3172,13 @@ async function endSession() {
   document.getElementById('lobby-overlay').classList.remove('hidden');
   showToast('Session ended and removed.', 'info');
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: periodic leaderboard update
+   ========================================================= */
 
 /* === LEADERBOARD UPDATE (periodic) === */
 let leaderboardInterval;
@@ -3147,6 +3222,13 @@ function startLeaderboardUpdates() {
   }, 3000);
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: elapsed timer
+   ========================================================= */
+
 /* === ELAPSED TIMER === */
 function updateElapsed() {
   if (!startTime) return;
@@ -3158,6 +3240,13 @@ function updateElapsed() {
   requestAnimationFrame(updateElapsed);
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: toast notifications
+   ========================================================= */
+
 /* === TOAST === */
 function showToast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -3167,6 +3256,13 @@ function showToast(msg, type = 'info') {
   container.appendChild(el);
   setTimeout(() => el.remove(), 4000);
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: TA toolbar buttons
+   ========================================================= */
 
 /* === TA TOOLBAR FUNCTIONS === */
 function toggleDropdown(id) {
@@ -3257,6 +3353,13 @@ function clearAllTA() {
   showToast('All studies cleared', 'info');
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: app init IIFE (Auth.init -> showLobby + leaderboard observer)
+   ========================================================= */
+
 /* === INIT === */
 (async function init() {
   try {
@@ -3278,6 +3381,7 @@ function clearAllTA() {
   });
   observer.observe(document.getElementById('sim-container'), { attributes: true, attributeFilter: ['class'] });
 })();
+
 </script>
 </body>
 </html>
