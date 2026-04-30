@@ -662,6 +662,10 @@ function getSupabase() {
   return _supabase;
 }
 
+// Expose for non-Supabase-client callers (e.g. sendBeacon on tab close).
+window.SUPABASE_URL = SUPABASE_URL;
+window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+
 </script>
 <script>
 /* =========================================================

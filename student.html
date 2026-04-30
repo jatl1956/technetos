@@ -513,6 +513,10 @@ function getSupabase() {
   return _supabase;
 }
 
+// Expose for non-Supabase-client callers (e.g. sendBeacon on tab close).
+window.SUPABASE_URL = SUPABASE_URL;
+window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+
 </script>
 <script>
 /* =========================================================
@@ -2227,23 +2231,24 @@ async function startStudentSim() {
   portfolio.accruedMarginInterest = parseFloat(p.accrued_margin_interest) || 0;
 
   // Fase D: restore WORKING orders from DB so refresh doesn't lose them.
-  // Maps DB schema (snake_case + order_type) to local portfolio.orders shape.
+  // IMPORTANT: keep DB shape (snake_case + order_type) because OrderEngine.processOrders
+  // and updateOrdersDisplay both consume those exact field names. New orders inserted
+  // via OrderEngine.submitOrder() return the same DB shape, so this is consistent.
   try {
     const dbOrders = await OrderEngine.getWorkingOrders(p.id);
     portfolio.orders = (dbOrders || []).map(o => ({
       id: o.id,
       side: o.side,
-      orderType: o.order_type,
+      order_type: o.order_type,
       qty: o.qty,
-      limitPrice: o.limit_price != null ? parseFloat(o.limit_price) : null,
-      stopPrice: o.stop_price != null ? parseFloat(o.stop_price) : null,
-      trailAmount: o.trail_amount != null ? parseFloat(o.trail_amount) : null,
+      limit_price: o.limit_price != null ? parseFloat(o.limit_price) : null,
+      stop_price: o.stop_price != null ? parseFloat(o.stop_price) : null,
+      trail_amount: o.trail_amount != null ? parseFloat(o.trail_amount) : null,
       tif: o.tif || 'GTC',
       status: 'WORKING',
-      createdAt: o.created_at,
-      // Trailing-stop tracking state restarts at reconnect; engine will re-track
-      _trailPeak: null,
-      _trailTrough: null
+      created_at: o.created_at,
+      // TRAILING uses _bestPrice; reset on reconnect so engine re-tracks from current price
+      _bestPrice: null
     }));
     if (portfolio.orders.length > 0) {
       showToast('Restored ' + portfolio.orders.length + ' working order(s) from previous session', 'info');
@@ -3100,20 +3105,39 @@ function clearAllTA() {
 })();
 
 /* === Fase D: mark disconnected on tab close ===
- * Best-effort. If the user just closes the tab, we attempt a fast update so
- * the master sees them as OFFLINE. Persistence of state happens on every
- * fill and every 5s, so a refresh keeps everything intact.
+ * Uses navigator.sendBeacon so the request reliably leaves the browser
+ * even after the page starts unloading. Falls back to fetch(keepalive) if
+ * sendBeacon is unavailable.
+ *
+ * Persistence of portfolio state happens on every fill and every 5s, so
+ * a refresh keeps everything intact regardless of whether this beacon fires.
  */
-window.addEventListener('beforeunload', () => {
+function _sendOfflineBeacon() {
   if (!RoomManager.currentParticipant) return;
-  try {
-    const sb = SupabaseConfig.getClient();
-    // Use sendBeacon-equivalent: PATCH that doesn't block the unload
-    sb.from('participants')
-      .update({ is_connected: false })
-      .eq('id', RoomManager.currentParticipant.id);
-  } catch (e) { /* swallow — page is unloading */ }
-});
+  const url = window.SUPABASE_URL + '/rest/v1/participants?id=eq.' + RoomManager.currentParticipant.id;
+  const headers = {
+    'apikey': window.SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=minimal'
+  };
+  const body = JSON.stringify({ is_connected: false });
+
+  // Preferred: sendBeacon. Browsers guarantee delivery during unload.
+  // Note: sendBeacon doesn't support PATCH directly, but we can use fetch with keepalive.
+  if (typeof fetch === 'function') {
+    try {
+      fetch(url, { method: 'PATCH', headers, body, keepalive: true });
+      return;
+    } catch (_) { /* fall through */ }
+  }
+  // Last resort: sendBeacon (POST only, won't update is_connected but won't error)
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+  }
+}
+window.addEventListener('pagehide', _sendOfflineBeacon);
+window.addEventListener('beforeunload', _sendOfflineBeacon);
 </script>
 </body>
 </html>

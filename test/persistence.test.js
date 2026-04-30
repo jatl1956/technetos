@@ -194,46 +194,52 @@ describe('sync payload to DB', () => {
 
 /**
  * Mirror of the working-orders restore logic in student.html startStudentSim.
+ * IMPORTANT: keeps DB shape (snake_case + order_type) because
+ * OrderEngine.processOrders and updateOrdersDisplay consume those exact
+ * field names. New orders inserted via OrderEngine.submitOrder() return
+ * the same DB shape.
  */
 function restoreWorkingOrders(dbOrders) {
   return (dbOrders || []).map(o => ({
     id: o.id,
     side: o.side,
-    orderType: o.order_type,
+    order_type: o.order_type,
     qty: o.qty,
-    limitPrice: o.limit_price != null ? parseFloat(o.limit_price) : null,
-    stopPrice: o.stop_price != null ? parseFloat(o.stop_price) : null,
-    trailAmount: o.trail_amount != null ? parseFloat(o.trail_amount) : null,
+    limit_price: o.limit_price != null ? parseFloat(o.limit_price) : null,
+    stop_price: o.stop_price != null ? parseFloat(o.stop_price) : null,
+    trail_amount: o.trail_amount != null ? parseFloat(o.trail_amount) : null,
     tif: o.tif || 'GTC',
     status: 'WORKING',
-    createdAt: o.created_at,
-    _trailPeak: null,
-    _trailTrough: null
+    created_at: o.created_at,
+    // TRAILING uses _bestPrice; reset on reconnect
+    _bestPrice: null
   }));
 }
 
-describe('working orders restoration', () => {
+describe('working orders restoration (Fase D / corrected v6)', () => {
   it('empty list stays empty', () => {
     expect(restoreWorkingOrders([])).toEqual([]);
     expect(restoreWorkingOrders(null)).toEqual([]);
     expect(restoreWorkingOrders(undefined)).toEqual([]);
   });
 
-  it('maps order_type → orderType', () => {
+  it('keeps order_type as DB-shaped field (NOT orderType)', () => {
     const orders = restoreWorkingOrders([{
       id: 'o1', side: 'BUY', order_type: 'LIMIT', qty: 100,
       limit_price: '180.50', tif: 'GTC', created_at: '2026-04-30T14:00:00Z'
     }]);
-    expect(orders[0].orderType).toBe('LIMIT');
-    expect(orders[0].limitPrice).toBe(180.50);
+    expect(orders[0].order_type).toBe('LIMIT');
+    expect(orders[0].orderType).toBeUndefined();
+    expect(orders[0].limit_price).toBe(180.50);
+    expect(orders[0].limitPrice).toBeUndefined();
   });
 
-  it('parses numeric strings to floats', () => {
+  it('parses numeric strings to floats (snake_case fields)', () => {
     const orders = restoreWorkingOrders([{
       id: 'o1', side: 'SELL', order_type: 'STOP', qty: 50,
       stop_price: '195.25', tif: 'GTC'
     }]);
-    expect(orders[0].stopPrice).toBe(195.25);
+    expect(orders[0].stop_price).toBe(195.25);
   });
 
   it('null limit/stop/trail prices stay null', () => {
@@ -241,19 +247,18 @@ describe('working orders restoration', () => {
       id: 'o1', side: 'BUY', order_type: 'MARKET', qty: 100,
       limit_price: null, stop_price: null, trail_amount: null
     }]);
-    expect(orders[0].limitPrice).toBeNull();
-    expect(orders[0].stopPrice).toBeNull();
-    expect(orders[0].trailAmount).toBeNull();
+    expect(orders[0].limit_price).toBeNull();
+    expect(orders[0].stop_price).toBeNull();
+    expect(orders[0].trail_amount).toBeNull();
   });
 
-  it('TRAILING order preserves trail_amount + resets _trailPeak/_trailTrough', () => {
+  it('TRAILING order preserves trail_amount + resets _bestPrice', () => {
     const orders = restoreWorkingOrders([{
       id: 'o1', side: 'SELL', order_type: 'TRAILING', qty: 100,
       trail_amount: '2.50'
     }]);
-    expect(orders[0].trailAmount).toBe(2.50);
-    expect(orders[0]._trailPeak).toBeNull();
-    expect(orders[0]._trailTrough).toBeNull();
+    expect(orders[0].trail_amount).toBe(2.50);
+    expect(orders[0]._bestPrice).toBeNull();
   });
 
   it('defaults TIF to GTC when missing', () => {
@@ -271,6 +276,79 @@ describe('working orders restoration', () => {
       { id: '4', side: 'BUY_TO_COVER', order_type: 'MARKET', qty: 100 }
     ]);
     expect(orders.map(o => o.side)).toEqual(['BUY', 'SELL', 'SHORT_SELL', 'BUY_TO_COVER']);
+  });
+});
+
+// ====================================================================
+// Integration: restored orders flow through processOrders correctly
+// (the test that would have caught Codex's P1)
+// ====================================================================
+
+function freshPortfolio(overrides = {}) {
+  return {
+    cash: 100000,
+    shares: 0,
+    avgCost: 0,
+    shortShares: 0,
+    shortAvgCost: 0,
+    realizedPnl: 0,
+    totalCommissions: 0,
+    ...overrides
+  };
+}
+
+describe('restored orders integrate with processOrders', () => {
+  it('LIMIT BUY restored from DB fills when ask <= limit_price', () => {
+    // Simulate restore from DB row
+    const restored = restoreWorkingOrders([{
+      id: 'restored-1', side: 'BUY', order_type: 'LIMIT', qty: 100,
+      limit_price: '180.00', tif: 'GTC', created_at: '2026-04-30T14:00:00Z'
+    }]);
+    // Tick where ask is below limit
+    const tick = { close: 178, bid: 177.95, ask: 178.05 };
+    const portfolio = freshPortfolio();
+    const fills = OrderEngine.processOrders(restored, tick, portfolio);
+    expect(fills).toHaveLength(1);
+    expect(fills[0].orderId).toBe('restored-1');
+    expect(fills[0].fillPrice).toBe(178.05); // ask
+  });
+
+  it('LIMIT BUY restored does NOT fill when ask > limit_price', () => {
+    const restored = restoreWorkingOrders([{
+      id: 'restored-2', side: 'BUY', order_type: 'LIMIT', qty: 100,
+      limit_price: '180.00', tif: 'GTC'
+    }]);
+    const tick = { close: 200, bid: 199.95, ask: 200.05 };
+    const portfolio = freshPortfolio();
+    const fills = OrderEngine.processOrders(restored, tick, portfolio);
+    expect(fills).toHaveLength(0);
+    expect(restored[0].status).toBe('WORKING');
+  });
+
+  it('STOP SELL restored fills when low <= stop_price', () => {
+    const restored = restoreWorkingOrders([{
+      id: 'restored-3', side: 'SELL', order_type: 'STOP', qty: 100,
+      stop_price: '90.00', tif: 'GTC'
+    }]);
+    const tick = { close: 88, bid: 87.95, ask: 88.05 };
+    const portfolio = freshPortfolio({ shares: 100, avgCost: 100 });
+    const fills = OrderEngine.processOrders(restored, tick, portfolio);
+    expect(fills).toHaveLength(1);
+    expect(fills[0].orderId).toBe('restored-3');
+  });
+
+  it('TRAILING SELL restored tracks _bestPrice from current tick', () => {
+    const restored = restoreWorkingOrders([{
+      id: 'restored-4', side: 'SELL', order_type: 'TRAILING', qty: 100,
+      trail_amount: '5.00', tif: 'GTC'
+    }]);
+    expect(restored[0]._bestPrice).toBeNull();
+    const tick1 = { close: 100, bid: 99.95, ask: 100.05 };
+    const portfolio = freshPortfolio({ shares: 100, avgCost: 100 });
+    OrderEngine.processOrders(restored, tick1, portfolio);
+    // After first tick, _bestPrice is initialized to last (100)
+    expect(restored[0]._bestPrice).toBe(100);
+    expect(restored[0].status).toBe('WORKING');
   });
 });
 
