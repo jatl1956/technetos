@@ -937,14 +937,28 @@ const RoomManager = {
     }
   },
 
-  /** Persist the data mode and scenario index once at session start. */
-  async persistMasterMode({ dataMode, scenarioIndex }) {
+  /**
+   * Fase E.1: persist the FULL replay identity once at session start.
+   * This includes the resolved sourceKey, startDay, mirror, and targetPrice
+   * — the four randomized inputs to HistoricalData.prepareSeries — so
+   * resumeSession can reconstruct the exact same series after a refresh.
+   *
+   * For GBM sessions, replayIdentity is null; only data_mode is set.
+   */
+  async persistMasterMode({ dataMode, scenarioIndex, replayIdentity }) {
     if (!this.currentRoom) return;
     const sb = getSupabase();
+    const update = { data_mode: dataMode, scenario_index: scenarioIndex };
+    if (replayIdentity) {
+      update.source_key = replayIdentity.sourceKey != null ? replayIdentity.sourceKey : null;
+      update.start_day = replayIdentity.startDay != null ? replayIdentity.startDay : null;
+      update.mirror = (replayIdentity.mirror === true || replayIdentity.mirror === false) ? replayIdentity.mirror : null;
+      update.target_price = replayIdentity.targetPrice != null ? replayIdentity.targetPrice : null;
+    }
     try {
       const { error } = await sb
         .from('rooms')
-        .update({ data_mode: dataMode, scenario_index: scenarioIndex })
+        .update(update)
         .eq('id', this.currentRoom.id);
       if (error) console.warn('[persistMasterMode] failed:', error.message);
     } catch (e) {
@@ -1235,12 +1249,21 @@ const HistoricalData = {
 
   /**
    * Select and prepare a series for playback.
-   * @param {number|null} scenarioIndex - null = random, 0-18 = specific scenario
-   * @param {object} opts - { startDay, maxCandles, targetPrice }
-   *   startDay: where in the series to start (default: random)
-   *   maxCandles: max candles to replay (default: 500)
-   *   targetPrice: transform so first candle's close ≈ this price (default: 100-300 random)
-   * @returns {object} { scenarioName, totalCandles }
+   *
+   * Fase E.1: this function takes 4 "replay identity" inputs that fully
+   * determine the resulting series. The returned object echoes all four
+   * back so the caller can persist them and reproduce the exact same
+   * series later (deterministic resume).
+   *
+   * @param {number|null} scenarioIndex — null = random ticker, otherwise index into _tickers
+   * @param {object} opts
+   *   @prop {number|null} startDay   — row in raw CSV; null = random
+   *   @prop {number}      maxCandles — default 500
+   *   @prop {number|null} targetPrice — null = random $80–$300
+   *   @prop {boolean|null} mirror    — null = random 30%, otherwise force
+   * @returns {object} resolved replay identity + series metadata:
+   *   { scenarioName, totalCandles, initialPrice,
+   *     scenarioIndex, sourceKey, startDay, mirror, targetPrice }
    */
   prepareSeries(scenarioIndex, opts = {}) {
     if (!this.isLoaded()) throw new Error('Historical data not loaded');
@@ -1248,35 +1271,41 @@ const HistoricalData = {
     const {
       startDay = null,
       maxCandles = 500,
-      targetPrice = null
+      targetPrice = null,
+      mirror = null
     } = opts;
 
     // Pick ticker
-    const idx = (scenarioIndex !== null && scenarioIndex !== undefined)
+    const resolvedScenarioIdx = (scenarioIndex !== null && scenarioIndex !== undefined)
       ? scenarioIndex % this._tickers.length
       : Math.floor(Math.random() * this._tickers.length);
-    
-    this._sourceKey = this._tickers[idx];
+
+    this._sourceKey = this._tickers[resolvedScenarioIdx];
     const raw = this._bundle[this._sourceKey]; // [[date,o,h,l,c,vol], ...]
 
     // Pick start point
     const maxStart = Math.max(0, raw.length - 50); // ensure at least 50 candles
-    const start = startDay !== null
-      ? Math.min(startDay, maxStart)
+    const resolvedStart = startDay !== null && startDay !== undefined
+      ? Math.min(Math.max(0, startDay), maxStart)
       : Math.floor(Math.random() * Math.max(1, raw.length - maxCandles));
-    
-    const end = Math.min(start + maxCandles, raw.length);
-    const slice = raw.slice(start, end);
+
+    const end = Math.min(resolvedStart + maxCandles, raw.length);
+    const slice = raw.slice(resolvedStart, end);
 
     // Transform: scale prices so first close ≈ target price
     const firstClose = slice[0][4]; // index 4 = close
-    const target = targetPrice || (80 + Math.random() * 220); // random $80-$300
-    const scale = target / firstClose;
+    const resolvedTarget = (targetPrice !== null && targetPrice !== undefined)
+      ? targetPrice
+      : (80 + Math.random() * 220); // random $80–$300
+    const scale = resolvedTarget / firstClose;
 
-    // Optional: randomly flip (mirror) the series ~30% of the time
-    const mirror = Math.random() < 0.30;
+    // Optional: mirror the series. Caller can force true/false; otherwise
+    // randomize 30% of the time.
+    const resolvedMirror = (mirror === true || mirror === false)
+      ? mirror
+      : (Math.random() < 0.30);
 
-    this._transform = { scale, mirror, targetPrice: target };
+    this._transform = { scale, mirror: resolvedMirror, targetPrice: resolvedTarget };
     this._series = [];
     this._index = 0;
 
@@ -1285,9 +1314,9 @@ const HistoricalData = {
 
     for (let i = 0; i < slice.length; i++) {
       const [date, rawO, rawH, rawL, rawC, rawVol] = slice[i];
-      
+
       let o, h, l, c;
-      if (mirror && i > 0) {
+      if (resolvedMirror && i > 0) {
         // Mirror: invert price changes relative to first candle
         // price_mirrored = 2 * firstClose - price_original (then scale)
         const pivot = firstClose;
@@ -1317,11 +1346,17 @@ const HistoricalData = {
       });
     }
 
-    const scenarioName = this.SCENARIO_NAMES[idx] || ('Scenario ' + (idx + 1));
+    const scenarioName = this.SCENARIO_NAMES[resolvedScenarioIdx] || ('Scenario ' + (resolvedScenarioIdx + 1));
     return {
       scenarioName,
       totalCandles: this._series.length,
-      initialPrice: this._series[0].close
+      initialPrice: this._series[0].close,
+      // Replay identity — persist these to reproduce the same series later
+      scenarioIndex: resolvedScenarioIdx,
+      sourceKey: this._sourceKey,
+      startDay: resolvedStart,
+      mirror: resolvedMirror,
+      targetPrice: resolvedTarget
     };
   },
 
@@ -1510,23 +1545,40 @@ const PriceEngine = {
     return candle;
   },
 
-  /** Reset engine */
+  /**
+   * Reset the price engine.
+   *
+   * Fase E.1: in historical mode, the result echoes back the resolved
+   * replay identity (sourceKey, startDay, mirror, targetPrice) so the
+   * caller can persist it for deterministic resume.
+   *
+   * For deterministic resume, the caller can pass `replayIdentity`:
+   *   { scenarioIndex, startDay, mirror, targetPrice }
+   * which forces prepareSeries to reconstruct the exact same series.
+   */
   reset(params) {
     if (params) Object.assign(this.params, params);
     this.tickIndex = 0;
     this.candles = [];
+    this._lastResetResult = null;
 
     if (this.mode === 'historical' && typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
       const scenarioIndex = params && params.scenarioIndex != null ? params.scenarioIndex : null;
+      // Fase E.1: optional deterministic-resume identity
+      const ri = (params && params.replayIdentity) || {};
       const result = HistoricalData.prepareSeries(scenarioIndex, {
         maxCandles: 500,
-        targetPrice: this.params.initialPrice || null
+        targetPrice: ri.targetPrice != null ? ri.targetPrice : (this.params.initialPrice || null),
+        startDay: ri.startDay != null ? ri.startDay : null,
+        mirror: (ri.mirror === true || ri.mirror === false) ? ri.mirror : null
       });
       this._histScenarioName = result.scenarioName;
       this._histTotalCandles = result.totalCandles;
       this.price = result.initialPrice;
       this.prevClose = result.initialPrice;
       this.params.initialPrice = result.initialPrice;
+      // Stash the resolved identity so callers (master-sim-start) can persist it
+      this._lastResetResult = result;
     } else {
       this.mode = 'gbm';
       this.price = this.params.initialPrice;
@@ -1534,6 +1586,7 @@ const PriceEngine = {
     }
 
     this._baseTime = Math.floor(Date.now() / 1000);
+    return this._lastResetResult;
   },
 
   /** Update params live */
@@ -2897,8 +2950,16 @@ async function resumeSession(room) {
     PriceEngine.mode = dataMode;
 
     if (dataMode === 'historical') {
-      // Use the original initial_price so HistoricalData scales the series
-      // the same way it did originally; then fast-forward.
+      // Fase E.1: rebuild the series with the EXACT replay identity that
+      // was saved at session start. Without this, prepareSeries would
+      // re-randomize source ticker / start day / mirror / target price
+      // and produce a totally different series — fast-forwarding to
+      // last_tick_index would land on candles students never saw.
+      const replayIdentity = {
+        startDay:    room.start_day,
+        mirror:      room.mirror,
+        targetPrice: room.target_price != null ? parseFloat(room.target_price) : null
+      };
       PriceEngine.reset({
         ticker: room.ticker,
         initialPrice: parseFloat(room.initial_price),
@@ -2906,7 +2967,8 @@ async function resumeSession(room) {
         volatility: parseFloat(room.volatility),
         tickSpeedMs: room.tick_speed_ms,
         spreadBps: room.spread_bps,
-        scenarioIndex: room.scenario_index
+        scenarioIndex: room.scenario_index,
+        replayIdentity
       });
       // Fast-forward HistoricalData to the saved tick index. Clamp to the
       // series length in case the saved index is past the end (e.g. data
@@ -2916,6 +2978,14 @@ async function resumeSession(room) {
         const ff = Math.min(lastTickIndex, total);
         HistoricalData._index = ff;
         PriceEngine.tickIndex = ff;
+      }
+      // Sanity check: if the saved sourceKey doesn't match the rebuilt
+      // series, warn the master — it likely means scenarioIndex shifted
+      // (bundle changed between sessions). The simulation will still run
+      // but continuity is not guaranteed.
+      if (room.source_key && typeof HistoricalData !== 'undefined' && HistoricalData._sourceKey !== room.source_key) {
+        console.warn('[resumeSession] sourceKey mismatch:', room.source_key, '!=', HistoricalData._sourceKey);
+        showToast('Resume: source data may have shifted; continuity not guaranteed', 'info');
       }
     } else {
       // GBM: continue from last_close (or initial_price if we never persisted)
@@ -3083,8 +3153,10 @@ async function startSession() {
     const scenarioIdx = window._sessionScenarioIndex;
     PriceEngine.mode = dataMode;
 
-    // Init price engine
-    PriceEngine.reset({
+    // Init price engine. In historical mode, reset() returns the resolved
+    // replay identity (sourceKey, startDay, mirror, targetPrice) so we can
+    // persist it for deterministic resume.
+    const resetResult = PriceEngine.reset({
       ticker: RoomManager.currentRoom.ticker,
       initialPrice: parseFloat(RoomManager.currentRoom.initial_price),
       drift: parseFloat(RoomManager.currentRoom.drift),
@@ -3097,12 +3169,21 @@ async function startSession() {
     // Init order engine params
     OrderEngine.initParams(RoomManager.currentRoom);
 
-    // Fase E: persist data mode + scenario index once so a future refresh
-    // can rehydrate the engine in the same mode. Per-tick state is saved
-    // by the sim loop.
+    // Fase E.1: persist the full replay identity (not just scenario index).
+    // resetResult is null for GBM, populated for historical.
+    const replayIdentity = (dataMode === 'historical' && resetResult) ? {
+      sourceKey:   resetResult.sourceKey,
+      startDay:    resetResult.startDay,
+      mirror:      resetResult.mirror,
+      targetPrice: resetResult.targetPrice
+    } : null;
     RoomManager.persistMasterMode({
       dataMode,
-      scenarioIndex: scenarioIdx == null ? null : scenarioIdx
+      // For random scenarios, persist the resolved index so resume picks the
+      // same ticker (otherwise scenarioIndex was null and resume would
+      // re-randomize).
+      scenarioIndex: replayIdentity ? resetResult.scenarioIndex : (scenarioIdx == null ? null : scenarioIdx),
+      replayIdentity
     });
 
     // Update UI

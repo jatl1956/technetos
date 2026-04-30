@@ -58,12 +58,21 @@ const HistoricalData = {
 
   /**
    * Select and prepare a series for playback.
-   * @param {number|null} scenarioIndex - null = random, 0-18 = specific scenario
-   * @param {object} opts - { startDay, maxCandles, targetPrice }
-   *   startDay: where in the series to start (default: random)
-   *   maxCandles: max candles to replay (default: 500)
-   *   targetPrice: transform so first candle's close ≈ this price (default: 100-300 random)
-   * @returns {object} { scenarioName, totalCandles }
+   *
+   * Fase E.1: this function takes 4 "replay identity" inputs that fully
+   * determine the resulting series. The returned object echoes all four
+   * back so the caller can persist them and reproduce the exact same
+   * series later (deterministic resume).
+   *
+   * @param {number|null} scenarioIndex — null = random ticker, otherwise index into _tickers
+   * @param {object} opts
+   *   @prop {number|null} startDay   — row in raw CSV; null = random
+   *   @prop {number}      maxCandles — default 500
+   *   @prop {number|null} targetPrice — null = random $80–$300
+   *   @prop {boolean|null} mirror    — null = random 30%, otherwise force
+   * @returns {object} resolved replay identity + series metadata:
+   *   { scenarioName, totalCandles, initialPrice,
+   *     scenarioIndex, sourceKey, startDay, mirror, targetPrice }
    */
   prepareSeries(scenarioIndex, opts = {}) {
     if (!this.isLoaded()) throw new Error('Historical data not loaded');
@@ -71,35 +80,41 @@ const HistoricalData = {
     const {
       startDay = null,
       maxCandles = 500,
-      targetPrice = null
+      targetPrice = null,
+      mirror = null
     } = opts;
 
     // Pick ticker
-    const idx = (scenarioIndex !== null && scenarioIndex !== undefined)
+    const resolvedScenarioIdx = (scenarioIndex !== null && scenarioIndex !== undefined)
       ? scenarioIndex % this._tickers.length
       : Math.floor(Math.random() * this._tickers.length);
-    
-    this._sourceKey = this._tickers[idx];
+
+    this._sourceKey = this._tickers[resolvedScenarioIdx];
     const raw = this._bundle[this._sourceKey]; // [[date,o,h,l,c,vol], ...]
 
     // Pick start point
     const maxStart = Math.max(0, raw.length - 50); // ensure at least 50 candles
-    const start = startDay !== null
-      ? Math.min(startDay, maxStart)
+    const resolvedStart = startDay !== null && startDay !== undefined
+      ? Math.min(Math.max(0, startDay), maxStart)
       : Math.floor(Math.random() * Math.max(1, raw.length - maxCandles));
-    
-    const end = Math.min(start + maxCandles, raw.length);
-    const slice = raw.slice(start, end);
+
+    const end = Math.min(resolvedStart + maxCandles, raw.length);
+    const slice = raw.slice(resolvedStart, end);
 
     // Transform: scale prices so first close ≈ target price
     const firstClose = slice[0][4]; // index 4 = close
-    const target = targetPrice || (80 + Math.random() * 220); // random $80-$300
-    const scale = target / firstClose;
+    const resolvedTarget = (targetPrice !== null && targetPrice !== undefined)
+      ? targetPrice
+      : (80 + Math.random() * 220); // random $80–$300
+    const scale = resolvedTarget / firstClose;
 
-    // Optional: randomly flip (mirror) the series ~30% of the time
-    const mirror = Math.random() < 0.30;
+    // Optional: mirror the series. Caller can force true/false; otherwise
+    // randomize 30% of the time.
+    const resolvedMirror = (mirror === true || mirror === false)
+      ? mirror
+      : (Math.random() < 0.30);
 
-    this._transform = { scale, mirror, targetPrice: target };
+    this._transform = { scale, mirror: resolvedMirror, targetPrice: resolvedTarget };
     this._series = [];
     this._index = 0;
 
@@ -108,9 +123,9 @@ const HistoricalData = {
 
     for (let i = 0; i < slice.length; i++) {
       const [date, rawO, rawH, rawL, rawC, rawVol] = slice[i];
-      
+
       let o, h, l, c;
-      if (mirror && i > 0) {
+      if (resolvedMirror && i > 0) {
         // Mirror: invert price changes relative to first candle
         // price_mirrored = 2 * firstClose - price_original (then scale)
         const pivot = firstClose;
@@ -140,11 +155,17 @@ const HistoricalData = {
       });
     }
 
-    const scenarioName = this.SCENARIO_NAMES[idx] || ('Scenario ' + (idx + 1));
+    const scenarioName = this.SCENARIO_NAMES[resolvedScenarioIdx] || ('Scenario ' + (resolvedScenarioIdx + 1));
     return {
       scenarioName,
       totalCandles: this._series.length,
-      initialPrice: this._series[0].close
+      initialPrice: this._series[0].close,
+      // Replay identity — persist these to reproduce the same series later
+      scenarioIndex: resolvedScenarioIdx,
+      sourceKey: this._sourceKey,
+      startDay: resolvedStart,
+      mirror: resolvedMirror,
+      targetPrice: resolvedTarget
     };
   },
 

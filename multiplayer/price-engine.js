@@ -135,23 +135,40 @@ const PriceEngine = {
     return candle;
   },
 
-  /** Reset engine */
+  /**
+   * Reset the price engine.
+   *
+   * Fase E.1: in historical mode, the result echoes back the resolved
+   * replay identity (sourceKey, startDay, mirror, targetPrice) so the
+   * caller can persist it for deterministic resume.
+   *
+   * For deterministic resume, the caller can pass `replayIdentity`:
+   *   { scenarioIndex, startDay, mirror, targetPrice }
+   * which forces prepareSeries to reconstruct the exact same series.
+   */
   reset(params) {
     if (params) Object.assign(this.params, params);
     this.tickIndex = 0;
     this.candles = [];
+    this._lastResetResult = null;
 
     if (this.mode === 'historical' && typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
       const scenarioIndex = params && params.scenarioIndex != null ? params.scenarioIndex : null;
+      // Fase E.1: optional deterministic-resume identity
+      const ri = (params && params.replayIdentity) || {};
       const result = HistoricalData.prepareSeries(scenarioIndex, {
         maxCandles: 500,
-        targetPrice: this.params.initialPrice || null
+        targetPrice: ri.targetPrice != null ? ri.targetPrice : (this.params.initialPrice || null),
+        startDay: ri.startDay != null ? ri.startDay : null,
+        mirror: (ri.mirror === true || ri.mirror === false) ? ri.mirror : null
       });
       this._histScenarioName = result.scenarioName;
       this._histTotalCandles = result.totalCandles;
       this.price = result.initialPrice;
       this.prevClose = result.initialPrice;
       this.params.initialPrice = result.initialPrice;
+      // Stash the resolved identity so callers (master-sim-start) can persist it
+      this._lastResetResult = result;
     } else {
       this.mode = 'gbm';
       this.price = this.params.initialPrice;
@@ -159,6 +176,7 @@ const PriceEngine = {
     }
 
     this._baseTime = Math.floor(Date.now() / 1000);
+    return this._lastResetResult;
   },
 
   /** Update params live */

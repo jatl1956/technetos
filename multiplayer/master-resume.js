@@ -38,8 +38,16 @@ async function resumeSession(room) {
     PriceEngine.mode = dataMode;
 
     if (dataMode === 'historical') {
-      // Use the original initial_price so HistoricalData scales the series
-      // the same way it did originally; then fast-forward.
+      // Fase E.1: rebuild the series with the EXACT replay identity that
+      // was saved at session start. Without this, prepareSeries would
+      // re-randomize source ticker / start day / mirror / target price
+      // and produce a totally different series — fast-forwarding to
+      // last_tick_index would land on candles students never saw.
+      const replayIdentity = {
+        startDay:    room.start_day,
+        mirror:      room.mirror,
+        targetPrice: room.target_price != null ? parseFloat(room.target_price) : null
+      };
       PriceEngine.reset({
         ticker: room.ticker,
         initialPrice: parseFloat(room.initial_price),
@@ -47,7 +55,8 @@ async function resumeSession(room) {
         volatility: parseFloat(room.volatility),
         tickSpeedMs: room.tick_speed_ms,
         spreadBps: room.spread_bps,
-        scenarioIndex: room.scenario_index
+        scenarioIndex: room.scenario_index,
+        replayIdentity
       });
       // Fast-forward HistoricalData to the saved tick index. Clamp to the
       // series length in case the saved index is past the end (e.g. data
@@ -57,6 +66,14 @@ async function resumeSession(room) {
         const ff = Math.min(lastTickIndex, total);
         HistoricalData._index = ff;
         PriceEngine.tickIndex = ff;
+      }
+      // Sanity check: if the saved sourceKey doesn't match the rebuilt
+      // series, warn the master — it likely means scenarioIndex shifted
+      // (bundle changed between sessions). The simulation will still run
+      // but continuity is not guaranteed.
+      if (room.source_key && typeof HistoricalData !== 'undefined' && HistoricalData._sourceKey !== room.source_key) {
+        console.warn('[resumeSession] sourceKey mismatch:', room.source_key, '!=', HistoricalData._sourceKey);
+        showToast('Resume: source data may have shifted; continuity not guaranteed', 'info');
       }
     } else {
       // GBM: continue from last_close (or initial_price if we never persisted)
