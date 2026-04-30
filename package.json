@@ -1,0 +1,14 @@
+{
+  "name": "technetos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multiplayer stock trading order mechanics simulator (Bloomberg Terminal aesthetic)",
+  "scripts": {
+    "build": "node build-inline.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}

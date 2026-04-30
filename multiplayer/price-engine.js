@@ -179,3 +179,8 @@ const PriceEngine = {
     return { mode: 'gbm', scenarioName: null };
   }
 };
+
+// Node.js export guard — invisible in the browser. Lets unit tests import the engine.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = PriceEngine;
+}

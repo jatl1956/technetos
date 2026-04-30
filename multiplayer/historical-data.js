@@ -184,3 +184,8 @@ const HistoricalData = {
     this._index = 0;
   }
 };
+
+// Node.js export guard — invisible in the browser. Lets unit tests import the engine.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = HistoricalData;
+}
