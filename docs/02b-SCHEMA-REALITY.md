@@ -50,7 +50,12 @@ This file supersedes `02-DATA-MODELS.md` where there is conflict. **The code is 
 
 **Status values used:** `'waiting'` (default), `'active'`, `'paused'`, `'completed'`, `'deleted'`
 
-**Recovery write contract (Fase E.2):** `persistMasterMode` returns `{ ok, error }`. Historical sessions block on this write at startSession; if it fails, the room stays in `'waiting'` and an error is shown. GBM sessions are best-effort — a missed write only costs a slightly older recovery point.
+**Recovery write contract (Fase E.2 + E.3):** `persistMasterMode` returns `{ ok, error }` and is awaited at `startSession()` for **every** mode. The room only flips from `'waiting'` to `'active'` after the write succeeds.
+
+  - **`data_mode` is mandatory in all modes.** If the write fails, `resumeSession` falls back to `room.data_mode || 'historical'`, so a GBM session would resume through the historical engine path and break continuity. Therefore GBM sessions ALSO abort startSession on persist failure.
+  - **Replay identity (`source_key`, `start_day`, `mirror`, `target_price`) is mandatory only in historical mode.** It's null for GBM and is not part of the gate for GBM sessions.
+
+The periodic `persistMasterState` (every 5 ticks) for `last_tick_index` / `last_close` / `last_tick_at` remains best-effort — a missed save only costs a slightly older recovery point and never changes the engine path.
 
 **Index for resume queries (migration 005):**
 ```sql

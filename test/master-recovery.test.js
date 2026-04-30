@@ -408,55 +408,44 @@ describe('Fase E.2 \u2014 persistMasterMode { ok, error } contract', () => {
     expect(r.error).toContain('source_key');
   });
 
-  it('historical mode aborts startSession when persist fails', async () => {
-    // Mirrors the gating logic in master-sim-start.js. We don't wire up
-    // the real flow (DOM, broadcast) but the gate itself is pure logic.
-    const persistResult = { ok: false, error: 'simulated RLS rejection' };
-    const dataMode = 'historical';
-
-    let sessionStarted = false;
-    async function startSessionGate() {
-      if (dataMode === 'historical' && persistResult && !persistResult.ok) {
-        throw new Error('Could not persist replay identity. ' + persistResult.error);
-      }
-      sessionStarted = true;
+  // Mirrors the gating logic in master-sim-start.js. We don't wire up
+  // the real flow (DOM, broadcast) but the gate itself is pure logic.
+  // Fase E.3 (Codex v12 P2): the gate now applies to ALL modes because
+  // data_mode is mandatory for any kind of resume to work.
+  function startSessionGate(dataMode, persistResult) {
+    if (persistResult && !persistResult.ok) {
+      const reason = (dataMode === 'historical')
+        ? 'replay identity (deterministic resume would be unreliable)'
+        : 'data_mode (resume would default to historical and break continuity)';
+      throw new Error('Could not persist ' + reason + '. ' + (persistResult.error || ''));
     }
+  }
 
-    await expect(startSessionGate()).rejects.toThrow(/replay identity/);
-    expect(sessionStarted).toBe(false);
+  it('historical mode aborts startSession when persist fails', () => {
+    expect(() => startSessionGate('historical', { ok: false, error: 'simulated RLS rejection' }))
+      .toThrow(/replay identity/);
   });
 
-  it('GBM mode does NOT abort when persist fails (best-effort)', async () => {
-    // GBM resume only loses last_close granularity if the write fails;
-    // it doesn't break continuity. So we don't gate on it.
-    const persistResult = { ok: false, error: 'simulated transient failure' };
-    const dataMode = 'gbm';
-
-    let sessionStarted = false;
-    async function startSessionGate() {
-      if (dataMode === 'historical' && persistResult && !persistResult.ok) {
-        throw new Error('Could not persist replay identity. ' + persistResult.error);
-      }
-      sessionStarted = true;
-    }
-
-    await startSessionGate();
-    expect(sessionStarted).toBe(true);
+  it('GBM mode ALSO aborts startSession when persist fails (Fase E.3)', () => {
+    // Codex v12 P2: GBM cannot proceed without data_mode persisted. If
+    // it does, resumeSession’s `room.data_mode || 'historical'` fallback
+    // routes a GBM session through the historical path — breaking GBM
+    // recovery just as badly as a missing replay identity breaks
+    // historical recovery.
+    expect(() => startSessionGate('gbm', { ok: false, error: 'simulated RLS rejection' }))
+      .toThrow(/data_mode/);
   });
 
-  it('historical mode with successful persist proceeds', async () => {
-    const persistResult = { ok: true };
-    const dataMode = 'historical';
+  it('GBM error message points at the correct migration', () => {
+    expect(() => startSessionGate('gbm', { ok: false, error: 'col missing' }))
+      .toThrow(/break continuity/);
+  });
 
-    let sessionStarted = false;
-    async function startSessionGate() {
-      if (dataMode === 'historical' && persistResult && !persistResult.ok) {
-        throw new Error('Could not persist replay identity. ' + persistResult.error);
-      }
-      sessionStarted = true;
-    }
+  it('historical mode with successful persist proceeds (no false-positive abort)', () => {
+    expect(() => startSessionGate('historical', { ok: true })).not.toThrow();
+  });
 
-    await startSessionGate();
-    expect(sessionStarted).toBe(true);
+  it('GBM mode with successful persist proceeds', () => {
+    expect(() => startSessionGate('gbm', { ok: true })).not.toThrow();
   });
 });
