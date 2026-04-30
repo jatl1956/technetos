@@ -471,3 +471,8 @@ const OrderEngine = {
     if (error) console.error('Metrics save error:', error);
   }
 };
+
+// Node.js export guard — invisible in the browser. Lets unit tests import the engine.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = OrderEngine;
+}
