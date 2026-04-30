@@ -275,6 +275,20 @@
       </div>
     </div>
 
+    <!-- Fase E: resume banner — only visible when an active/paused room owned by this master is found -->
+    <div id="resume-banner" class="hidden" style="margin:8px 0 16px;padding:10px 12px;border:1px solid var(--accent-orange);border-radius:6px;background:rgba(255,140,0,0.08);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:10px;letter-spacing:0.6px;color:var(--accent-orange);font-weight:600;">RESUMABLE SESSION</div>
+          <div style="font-size:12px;color:var(--text-primary);margin-top:2px;"><span id="resume-name">--</span> &middot; <span id="resume-code">--</span> &middot; <span id="resume-tick">--</span></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-primary" onclick="handleResumeClick()" style="padding:6px 12px;font-size:10px;">RESUME</button>
+          <button class="btn-secondary" onclick="handleDiscardResume()" style="padding:6px 12px;font-size:10px;">DISCARD</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Create New Room -->
     <div class="section-label">CREATE NEW SESSION</div>
     <input type="text" id="room-name" placeholder="Session Name (e.g. Class 101 - Week 3)" class="input-field">
@@ -887,6 +901,82 @@ const RoomManager = {
   /** End the simulation */
   async completeRoom() {
     return this.updateRoom({ status: 'completed', completed_at: new Date().toISOString() });
+  },
+
+  /* ----- Fase E: master refresh recovery -----
+   *
+   * `persistMasterState` is called by the master tick loop every 5 ticks
+   * to save the minimum state needed to rehydrate after a browser refresh.
+   * Best-effort: errors are swallowed (a missed save just means a slightly
+   * older recovery point on next refresh).
+   *
+   * `getResumableRoom` is called by the lobby on app init to detect any
+   * room owned by the current master that is still alive (status active
+   * or paused). The lobby uses this to offer a "Resume Session" button.
+   */
+
+  /** Persist tick state for refresh recovery. Best-effort, swallows errors. */
+  async persistMasterState({ tickIndex, lastClose }) {
+    if (!this.currentRoom) return;
+    const sb = getSupabase();
+    try {
+      const { error } = await sb
+        .from('rooms')
+        .update({
+          last_tick_index: tickIndex,
+          last_close: lastClose,
+          last_tick_at: new Date().toISOString()
+        })
+        .eq('id', this.currentRoom.id);
+      if (error) {
+        // Don't throw — next save will retry. Log for debugging.
+        console.warn('[persistMasterState] failed:', error.message);
+      }
+    } catch (e) {
+      console.warn('[persistMasterState] exception:', e && e.message);
+    }
+  },
+
+  /** Persist the data mode and scenario index once at session start. */
+  async persistMasterMode({ dataMode, scenarioIndex }) {
+    if (!this.currentRoom) return;
+    const sb = getSupabase();
+    try {
+      const { error } = await sb
+        .from('rooms')
+        .update({ data_mode: dataMode, scenario_index: scenarioIndex })
+        .eq('id', this.currentRoom.id);
+      if (error) console.warn('[persistMasterMode] failed:', error.message);
+    } catch (e) {
+      console.warn('[persistMasterMode] exception:', e && e.message);
+    }
+  },
+
+  /**
+   * Find a room owned by the current master that is still alive (active
+   * or paused). Returns the most-recently-active room or null.
+   * Used by the lobby to offer "Resume Session".
+   */
+  async getResumableRoom() {
+    if (!Auth.currentUser) return null;
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('rooms')
+      .select('*')
+      .eq('master_id', Auth.currentUser.id)
+      .in('status', ['active', 'paused'])
+      .order('last_tick_at', { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (error) {
+      console.warn('[getResumableRoom] failed:', error.message);
+      return null;
+    }
+    return (data && data.length > 0) ? data[0] : null;
+  },
+
+  /** Adopt a room as the master's current room (used by resume flow). */
+  setCurrentRoom(room) {
+    this.currentRoom = room;
   },
 
   /** Get all participants in the current room */
@@ -2664,6 +2754,63 @@ async function showLobby() {
   document.getElementById('lobby-overlay').classList.remove('hidden');
   document.getElementById('lobby-user-email').textContent = Auth.currentUser.email;
   populateScenarios();  // ensure scenario dropdown is populated
+
+  // Fase E: detect a resumable session (active or paused room owned by
+  // this master) and surface a Resume banner. If none, hide the banner.
+  await refreshResumeBanner();
+}
+
+/* Fase E: queries the DB for a resumable room and toggles the banner. */
+async function refreshResumeBanner() {
+  const banner = document.getElementById('resume-banner');
+  if (!banner) return; // banner DOM not present yet (older HTML)
+  try {
+    const room = await RoomManager.getResumableRoom();
+    if (!room) {
+      banner.classList.add('hidden');
+      return;
+    }
+    // Cache the room on the banner element so the click handler can use it
+    // without re-querying.
+    banner._room = room;
+    const codeEl = document.getElementById('resume-code');
+    const nameEl = document.getElementById('resume-name');
+    const tickEl = document.getElementById('resume-tick');
+    if (codeEl) codeEl.textContent = room.code;
+    if (nameEl) nameEl.textContent = room.name || '(unnamed)';
+    if (tickEl) tickEl.textContent = (room.last_tick_index || 0) + ' ticks';
+    banner.classList.remove('hidden');
+  } catch (e) {
+    console.warn('[refreshResumeBanner] failed:', e && e.message);
+    banner.classList.add('hidden');
+  }
+}
+
+/* Fase E: button handler — grabs the cached room and hands off to resumeSession. */
+async function handleResumeClick() {
+  const banner = document.getElementById('resume-banner');
+  if (!banner || !banner._room) {
+    showToast('No session to resume', 'error');
+    return;
+  }
+  await resumeSession(banner._room);
+}
+
+/* Fase E: button handler — marks the resumable room as completed and refreshes. */
+async function handleDiscardResume() {
+  const banner = document.getElementById('resume-banner');
+  if (!banner || !banner._room) return;
+  if (!confirm('Discard this session? It will be marked completed and cannot be resumed.')) return;
+  try {
+    RoomManager.setCurrentRoom(banner._room);
+    await RoomManager.completeRoom();
+    RoomManager.setCurrentRoom(null);
+    banner._room = null;
+    banner.classList.add('hidden');
+    showToast('Session discarded', 'info');
+  } catch (e) {
+    showToast('Failed to discard: ' + (e && e.message), 'error');
+  }
 }
 
 /* === CREATE ROOM === */
@@ -2705,6 +2852,156 @@ async function createRoom() {
   } catch (e) {
     showToast(e.message, 'error');
     document.getElementById('btn-create-room').textContent = 'CREATE SESSION';
+  }
+}
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Master
+   Module: resume — rehydrate a session after refresh (Fase E)
+   ========================================================= */
+
+/* === RESUME SESSION ===
+ * Rehydrates a master session that was interrupted by a refresh / tab close.
+ *
+ * Strategy:
+ *   - data_mode='historical': PriceEngine.reset with the saved scenarioIndex
+ *     and then fast-forward HistoricalData._index to last_tick_index. From
+ *     there the next nextCandle() returns the same candle the master would
+ *     have generated next, so students see continuity.
+ *   - data_mode='gbm':       PriceEngine.reset with last_close as the new
+ *     initialPrice. GBM ticks are random so we can't replay them bit-for-bit;
+ *     resuming from last_close avoids a price jump for the students.
+ *
+ * In both cases:
+ *   - We resume in PAUSED state. The master sees the play button and decides
+ *     when to actually resume broadcasting. This is critical because the
+ *     students might also need a moment to reconnect.
+ */
+
+async function resumeSession(room) {
+  try {
+    document.getElementById('lobby-overlay').classList.add('hidden');
+    document.getElementById('sim-container').classList.remove('hidden');
+
+    // Adopt the room
+    RoomManager.setCurrentRoom(room);
+    RoomManager.initBroadcast(room.id);
+
+    const dataMode = room.data_mode || 'historical';
+    const lastTickIndex = room.last_tick_index || 0;
+    const lastClose = room.last_close ? parseFloat(room.last_close) : null;
+
+    // Re-init engines
+    PriceEngine.mode = dataMode;
+
+    if (dataMode === 'historical') {
+      // Use the original initial_price so HistoricalData scales the series
+      // the same way it did originally; then fast-forward.
+      PriceEngine.reset({
+        ticker: room.ticker,
+        initialPrice: parseFloat(room.initial_price),
+        drift: parseFloat(room.drift),
+        volatility: parseFloat(room.volatility),
+        tickSpeedMs: room.tick_speed_ms,
+        spreadBps: room.spread_bps,
+        scenarioIndex: room.scenario_index
+      });
+      // Fast-forward HistoricalData to the saved tick index. Clamp to the
+      // series length in case the saved index is past the end (e.g. data
+      // exhausted between save and refresh).
+      if (typeof HistoricalData !== 'undefined' && HistoricalData.isLoaded()) {
+        const total = HistoricalData._series.length;
+        const ff = Math.min(lastTickIndex, total);
+        HistoricalData._index = ff;
+        PriceEngine.tickIndex = ff;
+      }
+    } else {
+      // GBM: continue from last_close (or initial_price if we never persisted)
+      const newInitial = lastClose != null ? lastClose : parseFloat(room.initial_price);
+      PriceEngine.reset({
+        ticker: room.ticker,
+        initialPrice: newInitial,
+        drift: parseFloat(room.drift),
+        volatility: parseFloat(room.volatility),
+        tickSpeedMs: room.tick_speed_ms,
+        spreadBps: room.spread_bps
+      });
+      // Preserve the saved tick index so the time axis on the chart keeps
+      // moving forward instead of restarting at 0.
+      PriceEngine.tickIndex = lastTickIndex;
+    }
+
+    // Order engine params (commission, leverage, margin, etc.)
+    OrderEngine.initParams(room);
+
+    // Update UI labels (mirror master-sim-start.js)
+    document.getElementById('sim-room-code').textContent = 'CODE: ' + room.code;
+    const ticker = room.ticker;
+    document.getElementById('ticker-sym').value = ticker;
+    document.getElementById('chart-title').textContent = ticker;
+    document.getElementById('ms-ticker').textContent = ticker;
+    document.getElementById('ms-speed').textContent = PriceEngine.params.tickSpeedMs + 'ms';
+
+    const info = PriceEngine.getScenarioInfo();
+    if (info.mode === 'historical') {
+      document.getElementById('ms-mode').textContent = 'Historical';
+      document.getElementById('ms-scenario').textContent = info.scenarioName || 'Random';
+      document.getElementById('ms-remaining').textContent = info.remaining + ' candles';
+      document.getElementById('ms-scenario-row').style.display = '';
+      document.getElementById('ms-remaining-row').style.display = '';
+      document.getElementById('ms-drift-row').style.display = 'none';
+      document.getElementById('ms-vol-row').style.display = 'none';
+    } else {
+      document.getElementById('ms-mode').textContent = 'GBM';
+      document.getElementById('ms-scenario-row').style.display = 'none';
+      document.getElementById('ms-remaining-row').style.display = 'none';
+      document.getElementById('ms-drift-row').style.display = '';
+      document.getElementById('ms-vol-row').style.display = '';
+      document.getElementById('ms-drift').textContent = PriceEngine.params.drift;
+      document.getElementById('ms-vol').textContent = PriceEngine.params.volatility;
+    }
+    const sp = OrderEngine.sessionParams;
+    document.getElementById('ms-leverage').textContent = sp.maxLeverage + 'x';
+    document.getElementById('ms-short').textContent = sp.shortSellingEnabled ? 'ON' : 'OFF';
+    document.getElementById('ms-commission').textContent = '$' + sp.commissionPerShare + '/sh';
+    document.getElementById('ms-cash-rate').textContent = (sp.cashInterestRate * 100).toFixed(1) + '%';
+    document.getElementById('ms-margin-rate').textContent = (sp.marginInterestRate * 100).toFixed(1) + '%';
+    document.getElementById('ms-mc-grace').textContent = (sp.marginCallGraceTicks || 30) + ' ticks';
+
+    // Init chart fresh. We can't replay past candles bit-for-bit, but if we
+    // have a last_close we seed a single candle so the chart isn't empty.
+    initChart();
+    if (lastClose != null) {
+      const seed = {
+        time: PriceEngine._baseTime + PriceEngine.tickIndex,
+        open: lastClose,
+        high: lastClose,
+        low: lastClose,
+        close: lastClose,
+        volume: 0
+      };
+      candleSeries.update(seed);
+      document.getElementById('ticker-price').textContent = lastClose.toFixed(2);
+      document.getElementById('ms-price').textContent = '$' + lastClose.toFixed(2);
+      document.getElementById('ms-candles').textContent = PriceEngine.tickIndex;
+    }
+
+    // Resume in PAUSED state. Master clicks play to actually start ticking.
+    isPlaying = false;
+    document.getElementById('icon-pause').style.display = 'none';
+    document.getElementById('icon-play').style.display = '';
+    // Mark the room paused in DB so students see consistent state.
+    await RoomManager.pauseRoom();
+    RoomManager.broadcastControl('pause');
+
+    startTime = Date.now();
+    updateElapsed();
+    showToast('Session resumed at tick ' + PriceEngine.tickIndex + '. Press play to continue.', 'info');
+  } catch (e) {
+    console.error('[resumeSession] failed:', e);
+    showToast('Resume failed: ' + (e && e.message), 'error');
   }
 }
 
@@ -2799,6 +3096,14 @@ async function startSession() {
 
     // Init order engine params
     OrderEngine.initParams(RoomManager.currentRoom);
+
+    // Fase E: persist data mode + scenario index once so a future refresh
+    // can rehydrate the engine in the same mode. Per-tick state is saved
+    // by the sim loop.
+    RoomManager.persistMasterMode({
+      dataMode,
+      scenarioIndex: scenarioIdx == null ? null : scenarioIdx
+    });
 
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;
@@ -2920,13 +3225,19 @@ function initChart() {
    ========================================================= */
 
 /* === SIMULATION LOOP === */
+// Fase E: persist master tick state every PERSIST_EVERY_TICKS so we can
+// recover from a refresh. Counter is module-scoped because tick() is a
+// closure and we don't want to repersist on every tick.
+const PERSIST_EVERY_TICKS = 5;
+let _persistCounter = 0;
+
 function startSimulation() {
   isPlaying = true;
   const baseSpeed = PriceEngine.params.tickSpeedMs;
-  
+
   function tick() {
     if (!isPlaying) return;
-    
+
     const candle = PriceEngine.nextCandle();
 
     // Historical mode: null means series exhausted
@@ -2936,6 +3247,8 @@ function startSimulation() {
       document.getElementById('icon-pause').style.display = 'none';
       document.getElementById('icon-play').style.display = '';
       RoomManager.broadcastControl('pause');
+      // Mark room completed in DB so the lobby doesn't keep offering Resume.
+      RoomManager.completeRoom().catch(() => {});
       return;
     }
     
@@ -2972,6 +3285,18 @@ function startSimulation() {
 
     // Broadcast to students
     RoomManager.broadcastPriceTick(candle);
+
+    // Fase E: persist master state every PERSIST_EVERY_TICKS so a refresh
+    // can resume from approximately where we left off. Best-effort — errors
+    // are swallowed inside RoomManager.persistMasterState.
+    _persistCounter++;
+    if (_persistCounter >= PERSIST_EVERY_TICKS) {
+      _persistCounter = 0;
+      RoomManager.persistMasterState({
+        tickIndex: PriceEngine.tickIndex,
+        lastClose: candle.close
+      });
+    }
 
     // Schedule next
     simInterval = setTimeout(tick, baseSpeed / speedMultiplier);

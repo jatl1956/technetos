@@ -4,13 +4,19 @@
    ========================================================= */
 
 /* === SIMULATION LOOP === */
+// Fase E: persist master tick state every PERSIST_EVERY_TICKS so we can
+// recover from a refresh. Counter is module-scoped because tick() is a
+// closure and we don't want to repersist on every tick.
+const PERSIST_EVERY_TICKS = 5;
+let _persistCounter = 0;
+
 function startSimulation() {
   isPlaying = true;
   const baseSpeed = PriceEngine.params.tickSpeedMs;
-  
+
   function tick() {
     if (!isPlaying) return;
-    
+
     const candle = PriceEngine.nextCandle();
 
     // Historical mode: null means series exhausted
@@ -20,6 +26,8 @@ function startSimulation() {
       document.getElementById('icon-pause').style.display = 'none';
       document.getElementById('icon-play').style.display = '';
       RoomManager.broadcastControl('pause');
+      // Mark room completed in DB so the lobby doesn't keep offering Resume.
+      RoomManager.completeRoom().catch(() => {});
       return;
     }
     
@@ -56,6 +64,18 @@ function startSimulation() {
 
     // Broadcast to students
     RoomManager.broadcastPriceTick(candle);
+
+    // Fase E: persist master state every PERSIST_EVERY_TICKS so a refresh
+    // can resume from approximately where we left off. Best-effort — errors
+    // are swallowed inside RoomManager.persistMasterState.
+    _persistCounter++;
+    if (_persistCounter >= PERSIST_EVERY_TICKS) {
+      _persistCounter = 0;
+      RoomManager.persistMasterState({
+        tickIndex: PriceEngine.tickIndex,
+        lastClose: candle.close
+      });
+    }
 
     // Schedule next
     simInterval = setTimeout(tick, baseSpeed / speedMultiplier);
