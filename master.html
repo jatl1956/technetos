@@ -944,9 +944,14 @@ const RoomManager = {
    * resumeSession can reconstruct the exact same series after a refresh.
    *
    * For GBM sessions, replayIdentity is null; only data_mode is set.
+   *
+   * Fase E.2 (Codex v11 P2): returns { ok, error } instead of swallowing
+   * errors. Historical sessions MUST block on this write succeeding
+   * because without persisted identity, a refresh produces a different
+   * series than students saw — the very bug Fase E.1 fixed.
    */
   async persistMasterMode({ dataMode, scenarioIndex, replayIdentity }) {
-    if (!this.currentRoom) return;
+    if (!this.currentRoom) return { ok: false, error: 'no current room' };
     const sb = getSupabase();
     const update = { data_mode: dataMode, scenario_index: scenarioIndex };
     if (replayIdentity) {
@@ -960,9 +965,15 @@ const RoomManager = {
         .from('rooms')
         .update(update)
         .eq('id', this.currentRoom.id);
-      if (error) console.warn('[persistMasterMode] failed:', error.message);
+      if (error) {
+        console.warn('[persistMasterMode] failed:', error.message);
+        return { ok: false, error: error.message };
+      }
+      return { ok: true };
     } catch (e) {
-      console.warn('[persistMasterMode] exception:', e && e.message);
+      const msg = e && e.message ? e.message : String(e);
+      console.warn('[persistMasterMode] exception:', msg);
+      return { ok: false, error: msg };
     }
   },
 
@@ -3142,12 +3153,6 @@ async function cancelSession() {
 async function startSession() {
   if (waitingPollInterval) clearInterval(waitingPollInterval);
   try {
-    await RoomManager.startRoom();
-    RoomManager.initBroadcast(RoomManager.currentRoom.id);
-    
-    document.getElementById('waiting-overlay').classList.add('hidden');
-    document.getElementById('sim-container').classList.remove('hidden');
-
     // Set data mode
     const dataMode = window._sessionDataMode || 'historical';
     const scenarioIdx = window._sessionScenarioIndex;
@@ -3169,15 +3174,22 @@ async function startSession() {
     // Init order engine params
     OrderEngine.initParams(RoomManager.currentRoom);
 
-    // Fase E.1: persist the full replay identity (not just scenario index).
-    // resetResult is null for GBM, populated for historical.
+    // Fase E.1 + E.2 (Codex v11 P2): persist the replay identity BEFORE
+    // marking the room active and starting the tick loop. We await the
+    // write and abort the whole startSession on failure for historical
+    // sessions — without persisted identity, a refresh produces a
+    // different series than students saw (the v10 P1 bug).
+    //
+    // For GBM sessions the identity is null and a missing write only
+    // costs a slightly older recovery point, so we treat it as
+    // best-effort and only log on failure.
     const replayIdentity = (dataMode === 'historical' && resetResult) ? {
       sourceKey:   resetResult.sourceKey,
       startDay:    resetResult.startDay,
       mirror:      resetResult.mirror,
       targetPrice: resetResult.targetPrice
     } : null;
-    RoomManager.persistMasterMode({
+    const persistResult = await RoomManager.persistMasterMode({
       dataMode,
       // For random scenarios, persist the resolved index so resume picks the
       // same ticker (otherwise scenarioIndex was null and resume would
@@ -3185,6 +3197,23 @@ async function startSession() {
       scenarioIndex: replayIdentity ? resetResult.scenarioIndex : (scenarioIdx == null ? null : scenarioIdx),
       replayIdentity
     });
+    if (dataMode === 'historical' && persistResult && !persistResult.ok) {
+      // Identity didn't persist. The room is still in 'waiting' status
+      // (we haven't called startRoom() yet) so we just throw — the room
+      // remains creatable/discardable from the master's lobby.
+      throw new Error(
+        'Could not persist replay identity (historical resume would be unreliable). ' +
+        'Check that migration 006 columns exist on rooms. Underlying error: ' +
+        (persistResult.error || 'unknown')
+      );
+    }
+
+    // Identity is durable. Now flip the room to active and start broadcasting.
+    await RoomManager.startRoom();
+    RoomManager.initBroadcast(RoomManager.currentRoom.id);
+
+    document.getElementById('waiting-overlay').classList.add('hidden');
+    document.getElementById('sim-container').classList.remove('hidden');
 
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;

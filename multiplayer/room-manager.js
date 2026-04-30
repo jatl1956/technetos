@@ -142,9 +142,14 @@ const RoomManager = {
    * resumeSession can reconstruct the exact same series after a refresh.
    *
    * For GBM sessions, replayIdentity is null; only data_mode is set.
+   *
+   * Fase E.2 (Codex v11 P2): returns { ok, error } instead of swallowing
+   * errors. Historical sessions MUST block on this write succeeding
+   * because without persisted identity, a refresh produces a different
+   * series than students saw — the very bug Fase E.1 fixed.
    */
   async persistMasterMode({ dataMode, scenarioIndex, replayIdentity }) {
-    if (!this.currentRoom) return;
+    if (!this.currentRoom) return { ok: false, error: 'no current room' };
     const sb = getSupabase();
     const update = { data_mode: dataMode, scenario_index: scenarioIndex };
     if (replayIdentity) {
@@ -158,9 +163,15 @@ const RoomManager = {
         .from('rooms')
         .update(update)
         .eq('id', this.currentRoom.id);
-      if (error) console.warn('[persistMasterMode] failed:', error.message);
+      if (error) {
+        console.warn('[persistMasterMode] failed:', error.message);
+        return { ok: false, error: error.message };
+      }
+      return { ok: true };
     } catch (e) {
-      console.warn('[persistMasterMode] exception:', e && e.message);
+      const msg = e && e.message ? e.message : String(e);
+      console.warn('[persistMasterMode] exception:', msg);
+      return { ok: false, error: msg };
     }
   },
 
