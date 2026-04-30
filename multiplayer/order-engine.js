@@ -13,7 +13,8 @@ const OrderEngine = {
     marginInterestRate: 0.08,  // annual
     shortSellingEnabled: true,
     maintenanceMargin: 0.25,
-    startingCash: 100000
+    startingCash: 100000,
+    marginCallGraceTicks: 30   // Default: 30 ticks before forced liquidation
   },
 
   /** Initialize session parameters from room config */
@@ -26,8 +27,37 @@ const OrderEngine = {
       marginInterestRate: parseFloat(room.margin_interest_rate) || 0.08,
       shortSellingEnabled: room.short_selling_enabled !== false,
       maintenanceMargin: parseFloat(room.maintenance_margin) || 0.25,
-      startingCash: parseFloat(room.starting_cash) || 100000
+      startingCash: parseFloat(room.starting_cash) || 100000,
+      marginCallGraceTicks: parseInt(room.margin_call_grace_ticks) || 30
     };
+  },
+
+  /**
+   * Returns true if the given side opens or increases an exposed position.
+   * Used during margin call to block any order that would deepen the deficit.
+   * Closing-only sides (SELL, BUY_TO_COVER) are allowed during margin call.
+   */
+  isOpeningOrder(side) {
+    return side === 'BUY' || side === 'SHORT_SELL';
+  },
+
+  /**
+   * Generate liquidation orders for forced position closure.
+   * Closes ALL open positions at market: longs via SELL, shorts via BUY_TO_COVER.
+   * Called by student.html when margin call grace period expires.
+   * @param {object} portfolio - current portfolio state
+   * @param {number} currentPrice - last known price (for sanity, not used to decide qty)
+   * @returns {Array<{side, qty}>} list of liquidation orders to apply
+   */
+  generateLiquidationOrders(portfolio, currentPrice) {
+    const orders = [];
+    if (portfolio.shares > 0) {
+      orders.push({ side: 'SELL', qty: portfolio.shares });
+    }
+    if (portfolio.shortShares > 0) {
+      orders.push({ side: 'BUY_TO_COVER', qty: portfolio.shortShares });
+    }
+    return orders;
   },
 
   /** Calculate commission for a trade */

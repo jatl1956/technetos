@@ -30,6 +30,9 @@ const RoomManager = {
       code,
       name,
       master_id: Auth.currentUser.id,
+      // Explicit lifecycle: room starts in 'waiting' until master clicks START.
+      // Students who join before START stay on the waiting screen.
+      status: 'waiting',
       ticker: params.ticker || 'AAPL',
       initial_price: params.initialPrice || 185.0,
       drift: params.drift || 0.08,
@@ -52,7 +55,9 @@ const RoomManager = {
       cash_interest_rate: params.cashInterestRate || 0.02,
       margin_interest_rate: params.marginInterestRate || 0.08,
       short_selling_enabled: params.shortSellingEnabled !== false,
-      maintenance_margin: params.maintenanceMargin || 0.25
+      maintenance_margin: params.maintenanceMargin || 0.25,
+      // Margin call grace period (ticks before forced liquidation)
+      margin_call_grace_ticks: params.marginCallGraceTicks || 30
     };
 
     const { data, error } = await sb.from('rooms').insert(roomData).select().single();

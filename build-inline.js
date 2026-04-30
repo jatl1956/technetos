@@ -1,23 +1,47 @@
 /**
  * Build script: Inlines all external CSS and JS into master.html and student.html
  * so they work as self-contained files without needing to load separate .js/.css files.
+ *
+ * Portable: uses __dirname so it works from any clone path.
+ * Resilient: skips optional artifacts (style.css, index.html, app.js) that
+ * are not part of the multiplayer codebase.
  */
 const fs = require('fs');
 const path = require('path');
 
-const BASE = '/home/user/workspace/bloomberg-sim';
+const BASE = __dirname;
 const MULTI = path.join(BASE, 'multiplayer');
 
+function readMaybe(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
+function readRequired(filePath, label) {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      throw new Error(`Required source missing: ${label} (${filePath})`);
+    }
+    throw e;
+  }
+}
+
 // Read all the source files
-const styleCss = fs.readFileSync(path.join(BASE, 'style.css'), 'utf-8');
-const supabaseConfig = fs.readFileSync(path.join(MULTI, 'supabase-config.js'), 'utf-8');
-const authJs = fs.readFileSync(path.join(MULTI, 'auth.js'), 'utf-8');
-const roomManagerJs = fs.readFileSync(path.join(MULTI, 'room-manager.js'), 'utf-8');
-const priceEngineJs = fs.readFileSync(path.join(MULTI, 'price-engine.js'), 'utf-8');
-const orderEngineJs = fs.readFileSync(path.join(MULTI, 'order-engine.js'), 'utf-8');
-const taEngineJs = fs.readFileSync(path.join(MULTI, 'ta-engine.js'), 'utf-8');
-const historicalDataJs = fs.readFileSync(path.join(MULTI, 'historical-data.js'), 'utf-8');
-const historicalBundleJs = fs.readFileSync(path.join(MULTI, 'historical-bundle.js'), 'utf-8');
+const styleCss = readMaybe(path.join(BASE, 'style.css'));
+const supabaseConfig = readRequired(path.join(MULTI, 'supabase-config.js'), 'supabase-config.js');
+const authJs = readRequired(path.join(MULTI, 'auth.js'), 'auth.js');
+const roomManagerJs = readRequired(path.join(MULTI, 'room-manager.js'), 'room-manager.js');
+const priceEngineJs = readRequired(path.join(MULTI, 'price-engine.js'), 'price-engine.js');
+const orderEngineJs = readRequired(path.join(MULTI, 'order-engine.js'), 'order-engine.js');
+const taEngineJs = readRequired(path.join(MULTI, 'ta-engine.js'), 'ta-engine.js');
+const historicalDataJs = readRequired(path.join(MULTI, 'historical-data.js'), 'historical-data.js');
+const historicalBundleJs = readRequired(path.join(MULTI, 'historical-bundle.js'), 'historical-bundle.js');
 
 // Polyfill injected BEFORE Supabase CDN to prevent SecurityError on navigator.locks
 // In sandboxed iframes, locks exists but .request() throws SecurityError
@@ -36,26 +60,28 @@ const locksPolyfill = `<script>
 
 function buildInlineHtml(htmlFile, jsModules) {
   let html = fs.readFileSync(path.join(MULTI, htmlFile), 'utf-8');
-  
-  // Replace <link rel="stylesheet" href="../style.css"> with inline <style>
-  html = html.replace(
-    '<link rel="stylesheet" href="../style.css">',
-    `<style>\n${styleCss}\n</style>`
-  );
-  
+
+  // Replace <link rel="stylesheet" href="../style.css"> with inline <style> if present
+  if (styleCss) {
+    html = html.replace(
+      '<link rel="stylesheet" href="../style.css">',
+      `<style>\n${styleCss}\n</style>`
+    );
+  }
+
   // Inject locks polyfill BEFORE the Supabase CDN script
   html = html.replace(
     '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',
     locksPolyfill + '\n<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>'
   );
-  
+
   // Replace each <script src="./xxx.js"></script> with inline <script>
   for (const mod of jsModules) {
     const srcTag = `<script src="./${mod.file}"></script>`;
     const inlineTag = `<script>\n${mod.content}\n</script>`;
     html = html.replace(srcTag, inlineTag);
   }
-  
+
   return html;
 }
 
@@ -71,7 +97,7 @@ const masterModules = [
   { file: 'ta-engine.js', content: taEngineJs },
 ];
 
-// Student uses 5 (no price-engine)
+// Student uses 5 (no price-engine, no historical bundle — receives prices via realtime)
 const studentModules = [
   { file: 'supabase-config.js', content: supabaseConfig },
   { file: 'auth.js', content: authJs },
@@ -89,11 +115,22 @@ fs.mkdirSync(path.join(OUT, 'multiplayer'), { recursive: true });
 fs.writeFileSync(path.join(OUT, 'multiplayer', 'master.html'), masterHtml);
 fs.writeFileSync(path.join(OUT, 'multiplayer', 'student.html'), studentHtml);
 
-// Also copy style.css and index.html (for single-player compat)
-fs.copyFileSync(path.join(BASE, 'style.css'), path.join(OUT, 'style.css'));
-fs.copyFileSync(path.join(BASE, 'index.html'), path.join(OUT, 'index.html'));
-fs.copyFileSync(path.join(BASE, 'app.js'), path.join(OUT, 'app.js'));
+// ALSO write to repo root so Vercel serves the latest build directly.
+// Vercel's site root is the repo root; it serves /master.html and /student.html.
+fs.writeFileSync(path.join(BASE, 'master.html'), masterHtml);
+fs.writeFileSync(path.join(BASE, 'student.html'), studentHtml);
+
+// Optionally copy single-player artifacts if they exist (for local /index.html access)
+const optionals = ['style.css', 'index.html', 'app.js'];
+for (const f of optionals) {
+  const src = path.join(BASE, f);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, path.join(OUT, f));
+  }
+}
 
 console.log('Built inline versions:');
-console.log('  dist/multiplayer/master.html -', (masterHtml.length / 1024).toFixed(1), 'KB');
+console.log('  dist/multiplayer/master.html  -', (masterHtml.length / 1024).toFixed(1), 'KB');
 console.log('  dist/multiplayer/student.html -', (studentHtml.length / 1024).toFixed(1), 'KB');
+console.log('  master.html (repo root)       -', (masterHtml.length / 1024).toFixed(1), 'KB');
+console.log('  student.html (repo root)      -', (studentHtml.length / 1024).toFixed(1), 'KB');
