@@ -88,6 +88,7 @@ const MASTER_MODULE_FILES = [
   'master-state.js',
   'master-auth.js',
   'master-lobby.js',
+  'master-resume.js',     // Fase E: refresh recovery
   'master-waiting.js',
   'master-sim-start.js',
   'master-chart.js',

@@ -32,6 +32,14 @@ async function startSession() {
     // Init order engine params
     OrderEngine.initParams(RoomManager.currentRoom);
 
+    // Fase E: persist data mode + scenario index once so a future refresh
+    // can rehydrate the engine in the same mode. Per-tick state is saved
+    // by the sim loop.
+    RoomManager.persistMasterMode({
+      dataMode,
+      scenarioIndex: scenarioIdx == null ? null : scenarioIdx
+    });
+
     // Update UI
     document.getElementById('sim-room-code').textContent = 'CODE: ' + RoomManager.currentRoom.code;
     const ticker = RoomManager.currentRoom.ticker;

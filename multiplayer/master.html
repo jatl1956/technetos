@@ -264,6 +264,20 @@
       </div>
     </div>
 
+    <!-- Fase E: resume banner — only visible when an active/paused room owned by this master is found -->
+    <div id="resume-banner" class="hidden" style="margin:8px 0 16px;padding:10px 12px;border:1px solid var(--accent-orange);border-radius:6px;background:rgba(255,140,0,0.08);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="min-width:0;flex:1;">
+          <div style="font-size:10px;letter-spacing:0.6px;color:var(--accent-orange);font-weight:600;">RESUMABLE SESSION</div>
+          <div style="font-size:12px;color:var(--text-primary);margin-top:2px;"><span id="resume-name">--</span> &middot; <span id="resume-code">--</span> &middot; <span id="resume-tick">--</span></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-primary" onclick="handleResumeClick()" style="padding:6px 12px;font-size:10px;">RESUME</button>
+          <button class="btn-secondary" onclick="handleDiscardResume()" style="padding:6px 12px;font-size:10px;">DISCARD</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Create New Room -->
     <div class="section-label">CREATE NEW SESSION</div>
     <input type="text" id="room-name" placeholder="Session Name (e.g. Class 101 - Week 3)" class="input-field">
@@ -627,6 +641,7 @@
 <script src="./master-state.js"></script>
 <script src="./master-auth.js"></script>
 <script src="./master-lobby.js"></script>
+<script src="./master-resume.js"></script>
 <script src="./master-waiting.js"></script>
 <script src="./master-sim-start.js"></script>
 <script src="./master-chart.js"></script>

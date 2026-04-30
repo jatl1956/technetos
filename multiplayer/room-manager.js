@@ -101,6 +101,82 @@ const RoomManager = {
     return this.updateRoom({ status: 'completed', completed_at: new Date().toISOString() });
   },
 
+  /* ----- Fase E: master refresh recovery -----
+   *
+   * `persistMasterState` is called by the master tick loop every 5 ticks
+   * to save the minimum state needed to rehydrate after a browser refresh.
+   * Best-effort: errors are swallowed (a missed save just means a slightly
+   * older recovery point on next refresh).
+   *
+   * `getResumableRoom` is called by the lobby on app init to detect any
+   * room owned by the current master that is still alive (status active
+   * or paused). The lobby uses this to offer a "Resume Session" button.
+   */
+
+  /** Persist tick state for refresh recovery. Best-effort, swallows errors. */
+  async persistMasterState({ tickIndex, lastClose }) {
+    if (!this.currentRoom) return;
+    const sb = getSupabase();
+    try {
+      const { error } = await sb
+        .from('rooms')
+        .update({
+          last_tick_index: tickIndex,
+          last_close: lastClose,
+          last_tick_at: new Date().toISOString()
+        })
+        .eq('id', this.currentRoom.id);
+      if (error) {
+        // Don't throw — next save will retry. Log for debugging.
+        console.warn('[persistMasterState] failed:', error.message);
+      }
+    } catch (e) {
+      console.warn('[persistMasterState] exception:', e && e.message);
+    }
+  },
+
+  /** Persist the data mode and scenario index once at session start. */
+  async persistMasterMode({ dataMode, scenarioIndex }) {
+    if (!this.currentRoom) return;
+    const sb = getSupabase();
+    try {
+      const { error } = await sb
+        .from('rooms')
+        .update({ data_mode: dataMode, scenario_index: scenarioIndex })
+        .eq('id', this.currentRoom.id);
+      if (error) console.warn('[persistMasterMode] failed:', error.message);
+    } catch (e) {
+      console.warn('[persistMasterMode] exception:', e && e.message);
+    }
+  },
+
+  /**
+   * Find a room owned by the current master that is still alive (active
+   * or paused). Returns the most-recently-active room or null.
+   * Used by the lobby to offer "Resume Session".
+   */
+  async getResumableRoom() {
+    if (!Auth.currentUser) return null;
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('rooms')
+      .select('*')
+      .eq('master_id', Auth.currentUser.id)
+      .in('status', ['active', 'paused'])
+      .order('last_tick_at', { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (error) {
+      console.warn('[getResumableRoom] failed:', error.message);
+      return null;
+    }
+    return (data && data.length > 0) ? data[0] : null;
+  },
+
+  /** Adopt a room as the master's current room (used by resume flow). */
+  setCurrentRoom(room) {
+    this.currentRoom = room;
+  },
+
   /** Get all participants in the current room */
   async getParticipants() {
     if (!this.currentRoom) return [];

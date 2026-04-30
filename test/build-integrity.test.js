@@ -42,6 +42,7 @@ const MASTER_MODULES = [
   'master-state.js',
   'master-auth.js',
   'master-lobby.js',
+  'master-resume.js',     // Fase E
   'master-waiting.js',
   'master-sim-start.js',
   'master-chart.js',
@@ -89,7 +90,7 @@ describe('build integrity (Fase C.1 + C.2)', () => {
     }
   });
 
-  it('source multiplayer/master.html references all 15 master-*.js modules', () => {
+  it('source multiplayer/master.html references all 16 master-*.js modules', () => {
     const src = fs.readFileSync(path.join(MULTI, 'master.html'), 'utf-8');
     for (const mod of MASTER_MODULES) {
       expect(src, `source missing <script src=./${mod}>`).toContain(`<script src="./${mod}"></script>`);
