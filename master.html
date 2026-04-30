@@ -677,15 +677,26 @@ const Auth = {
   currentUser: null,
   currentProfile: null,
 
+  /**
+   * Cache the user's access token on `window` so synchronous
+   * tab-close handlers (which can't await getSession) can use it.
+   * Falls back to null when logged out.
+   */
+  _cacheAccessToken(session) {
+    window._cachedAccessToken = session && session.access_token ? session.access_token : null;
+  },
+
   /** Initialize — check for existing session */
   async init() {
     const sb = getSupabase();
     const { data: { session } } = await sb.auth.getSession();
     if (session) {
       this.currentUser = session.user;
+      this._cacheAccessToken(session);
       await this._loadProfile();
       return true;
     }
+    this._cacheAccessToken(null);
     return false;
   },
 
@@ -701,6 +712,7 @@ const Auth = {
     });
     if (error) throw error;
     this.currentUser = data.user;
+    this._cacheAccessToken(data.session);
     // Profile is auto-created via trigger, but may need a moment
     await new Promise(r => setTimeout(r, 500));
     await this._loadProfile();
@@ -713,6 +725,7 @@ const Auth = {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
     this.currentUser = data.user;
+    this._cacheAccessToken(data.session);
     await this._loadProfile();
     return data;
   },
@@ -723,6 +736,7 @@ const Auth = {
     await sb.auth.signOut();
     this.currentUser = null;
     this.currentProfile = null;
+    this._cacheAccessToken(null);
   },
 
   /** Load profile from public.profiles */
@@ -755,6 +769,9 @@ const Auth = {
   onAuthChange(callback) {
     const sb = getSupabase();
     sb.auth.onAuthStateChange((event, session) => {
+      // Always refresh cached token — covers TOKEN_REFRESHED events too,
+      // so the unload beacon never sends a stale token.
+      this._cacheAccessToken(session);
       if (session) {
         this.currentUser = session.user;
         this._loadProfile().then(() => callback(event, session));
