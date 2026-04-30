@@ -60,6 +60,27 @@ const taEngineJs = readRequired(path.join(MULTI, 'ta-engine.js'), 'ta-engine.js'
 const historicalDataJs = readRequired(path.join(MULTI, 'historical-data.js'), 'historical-data.js');
 const historicalBundleJs = readRequired(path.join(MULTI, 'historical-bundle.js'), 'historical-bundle.js');
 
+// Fase C.1: student.html is split into per-concern modules.
+// Order matters — student-state.js declares the globals everyone else uses,
+// student-init.js runs the IIFE that bootstraps the app, beacon goes last.
+const STUDENT_MODULE_FILES = [
+  'student-state.js',
+  'student-auth.js',
+  'student-sim.js',
+  'student-orders-process.js',
+  'student-orders-entry.js',
+  'student-display.js',
+  'student-margin.js',
+  'student-toast.js',
+  'student-ta-tools.js',
+  'student-init.js',
+  'student-beacon.js'
+];
+const studentSubModules = STUDENT_MODULE_FILES.map(f => ({
+  file: f,
+  content: readRequired(path.join(MULTI, f), f)
+}));
+
 // Polyfill injected BEFORE Supabase CDN to prevent SecurityError on navigator.locks
 // In sandboxed iframes, locks exists but .request() throws SecurityError
 // We override it with a simple pass-through implementation
@@ -92,11 +113,14 @@ function buildInlineHtml(htmlFile, jsModules) {
     locksPolyfill + '\n<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>'
   );
 
-  // Replace each <script src="./xxx.js"></script> with inline <script>
+  // Replace each <script src="./xxx.js"></script> with inline <script>.
+  // Use a callback for the replacement so `$` characters in the JS source
+  // (e.g. `'$' + value.toLocaleString(...)`) are NOT interpreted as
+  // String.replace special tokens like $&, $', $`, $n.
   for (const mod of jsModules) {
     const srcTag = `<script src="./${mod.file}"></script>`;
     const inlineTag = `<script>\n${mod.content}\n</script>`;
-    html = html.replace(srcTag, inlineTag);
+    html = html.replace(srcTag, () => inlineTag);
   }
 
   return html;
@@ -114,13 +138,15 @@ const masterModules = [
   { file: 'ta-engine.js', content: taEngineJs },
 ];
 
-// Student uses 5 (no price-engine, no historical bundle — receives prices via realtime)
+// Student: shared engines + 11 per-concern modules (split from the old monolith).
+// Engines come first because student modules call into OrderEngine, TAEngine, etc.
 const studentModules = [
   { file: 'supabase-config.js', content: supabaseConfig },
   { file: 'auth.js', content: authJs },
   { file: 'room-manager.js', content: roomManagerJs },
   { file: 'order-engine.js', content: orderEngineJs },
   { file: 'ta-engine.js', content: taEngineJs },
+  ...studentSubModules,
 ];
 
 const masterHtml = buildInlineHtml('master.html', masterModules);

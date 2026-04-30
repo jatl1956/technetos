@@ -2042,6 +2042,11 @@ if (typeof module !== 'undefined' && module.exports) {
 </script>
 <script>
 /* =========================================================
+   Technetos Multiplayer — Student
+   Module: state — globals (portfolio, marginCallState, etc.)
+   ========================================================= */
+
+/* =========================================================
    STUDENT CONTROLLER
    ========================================================= */
 let authMode = 'signin';
@@ -2075,6 +2080,13 @@ let marginCallState = {
   totalGraceTicks: 0,
   liquidationExecuted: false
 };
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: auth + room join (toggleAuthMode, doLogin, joinRoom, waitForStart)
+   ========================================================= */
 
 /* === AUTH === */
 function toggleAuthMode() {
@@ -2213,6 +2225,13 @@ function waitForStart(roomId) {
     )
     .subscribe();
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: simulation start + chart + tick handler (startStudentSim, initChart, handlePriceTick)
+   ========================================================= */
 
 /* === START SIMULATION === */
 async function startStudentSim() {
@@ -2468,6 +2487,13 @@ function onSimControl(payload) {
   }
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: server-side order processing (processWorkingOrders)
+   ========================================================= */
+
 /* === ORDER PROCESSING === */
 function processLocalOrders(tick) {
   const working = portfolio.orders.filter(o => o.status === 'WORKING');
@@ -2516,6 +2542,13 @@ function processLocalOrders(tick) {
   updateExecutionsDisplay();
   updatePositionsDisplay();
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: order entry UI + submission (submitOrder, side/type buttons)
+   ========================================================= */
 
 /* === ORDER ENTRY === */
 function setSide(side) {
@@ -2626,6 +2659,13 @@ async function submitOrder() {
     showToast(e.message || 'Order failed.', 'error');
   }
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: UI display updates (portfolio, leaderboard, orders table)
+   ========================================================= */
 
 /* === DISPLAY UPDATES === */
 function updateAccountDisplay() {
@@ -2885,6 +2925,13 @@ async function saveEndMetrics() {
   });
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: margin call banner + forced liquidation UI
+   ========================================================= */
+
 /* === MARGIN CALL BANNER & LIQUIDATION === */
 function showMarginCallBanner(show) {
   const banner = document.getElementById('margin-call-banner');
@@ -2980,6 +3027,13 @@ function executeForcedLiquidation(tick) {
   updateOrdersDisplay();
 }
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: toast notifications
+   ========================================================= */
+
 /* === TOAST === */
 function showToast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -2989,6 +3043,13 @@ function showToast(msg, type = 'info') {
   container.appendChild(el);
   setTimeout(() => el.remove(), 4000);
 }
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: TA toolbar buttons + resizer IIFE
+   ========================================================= */
 
 /* === TA TOOLBAR FUNCTIONS === */
 function toggleDropdown(id) {
@@ -3109,6 +3170,13 @@ function clearAllTA() {
   }
 })();
 
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: app init IIFE (Auth.init, showJoinScreen / restore session)
+   ========================================================= */
+
 /* === INIT === */
 (async function init() {
   try {
@@ -3120,6 +3188,14 @@ function clearAllTA() {
     console.error('Init error:', e);
   }
 })();
+
+</script>
+<script>
+/* =========================================================
+   Technetos Multiplayer — Student
+   Module: offline beacon on tab close (Fase D / D.2)
+   ========================================================= */
+
 
 /* === Fase D / D.2: mark disconnected on tab close ===
  * Uses fetch(keepalive) so the PATCH reliably leaves the browser even after
@@ -3162,6 +3238,7 @@ function _sendOfflineBeacon() {
 }
 window.addEventListener('pagehide', _sendOfflineBeacon);
 window.addEventListener('beforeunload', _sendOfflineBeacon);
+
 </script>
 </body>
 </html>
