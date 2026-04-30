@@ -647,7 +647,7 @@ function waitForStart(roomId) {
 }
 
 /* === START SIMULATION === */
-function startStudentSim() {
+async function startStudentSim() {
   document.getElementById('join-overlay').classList.add('hidden');
   document.getElementById('waiting-badge').classList.add('hidden');
   document.getElementById('sim-container').classList.remove('hidden');
@@ -676,8 +676,37 @@ function startStudentSim() {
   portfolio.realizedPnl = parseFloat(p.realized_pnl) || 0;
   portfolio.totalCommissions = parseFloat(p.total_commissions) || 0;
   portfolio.accruedCashInterest = parseFloat(p.accrued_interest) || 0;
-  portfolio.accruedMarginInterest = 0; // tracked locally per session
+  // accrued_margin_interest persisted as of migration 004 (Fase D)
+  portfolio.accruedMarginInterest = parseFloat(p.accrued_margin_interest) || 0;
+
+  // Fase D: restore WORKING orders from DB so refresh doesn't lose them.
+  // Maps DB schema (snake_case + order_type) to local portfolio.orders shape.
+  try {
+    const dbOrders = await OrderEngine.getWorkingOrders(p.id);
+    portfolio.orders = (dbOrders || []).map(o => ({
+      id: o.id,
+      side: o.side,
+      orderType: o.order_type,
+      qty: o.qty,
+      limitPrice: o.limit_price != null ? parseFloat(o.limit_price) : null,
+      stopPrice: o.stop_price != null ? parseFloat(o.stop_price) : null,
+      trailAmount: o.trail_amount != null ? parseFloat(o.trail_amount) : null,
+      tif: o.tif || 'GTC',
+      status: 'WORKING',
+      createdAt: o.created_at,
+      // Trailing-stop tracking state restarts at reconnect; engine will re-track
+      _trailPeak: null,
+      _trailTrough: null
+    }));
+    if (portfolio.orders.length > 0) {
+      showToast('Restored ' + portfolio.orders.length + ' working order(s) from previous session', 'info');
+    }
+  } catch (e) {
+    console.warn('Failed to restore working orders:', e.message);
+  }
+
   updateAccountDisplay();
+  updateOrdersDisplay();
 
   initChart();
 
@@ -695,6 +724,7 @@ function startStudentSim() {
   }, 1000);
 
   // Periodic portfolio sync to DB (every 5 seconds)
+  // Fase D: include accrued_margin_interest and last_seen_tick for full refresh recovery
   setInterval(() => {
     if (RoomManager.currentParticipant) {
       OrderEngine.updateParticipant(RoomManager.currentParticipant.id, {
@@ -705,7 +735,9 @@ function startStudentSim() {
         short_avg_cost: portfolio.shortAvgCost,
         realized_pnl: portfolio.realizedPnl,
         total_commissions: portfolio.totalCommissions,
-        accrued_interest: portfolio.accruedCashInterest
+        accrued_interest: portfolio.accruedCashInterest,
+        accrued_margin_interest: portfolio.accruedMarginInterest,
+        last_seen_tick: lastTick ? lastTick.tickIndex || 0 : 0
       });
     }
   }, 5000);
@@ -905,7 +937,9 @@ function processLocalOrders(tick) {
       short_avg_cost: portfolio.shortAvgCost,
       realized_pnl: portfolio.realizedPnl,
       total_commissions: portfolio.totalCommissions,
-      accrued_interest: portfolio.accruedCashInterest
+      accrued_interest: portfolio.accruedCashInterest,
+      accrued_margin_interest: portfolio.accruedMarginInterest,
+      last_seen_tick: lastTick ? lastTick.tickIndex || 0 : 0
     });
   }
 
@@ -1368,7 +1402,9 @@ function executeForcedLiquidation(tick) {
     short_avg_cost: prt.shortAvgCost,
     realized_pnl: prt.realizedPnl,
     total_commissions: prt.totalCommissions,
-    accrued_interest: prt.accruedCashInterest
+    accrued_interest: prt.accruedCashInterest,
+    accrued_margin_interest: prt.accruedMarginInterest,
+    last_seen_tick: lastTick ? lastTick.tickIndex || 0 : 0
   });
 
   updateAccountDisplay();
@@ -1515,6 +1551,22 @@ function clearAllTA() {
     console.error('Init error:', e);
   }
 })();
+
+/* === Fase D: mark disconnected on tab close ===
+ * Best-effort. If the user just closes the tab, we attempt a fast update so
+ * the master sees them as OFFLINE. Persistence of state happens on every
+ * fill and every 5s, so a refresh keeps everything intact.
+ */
+window.addEventListener('beforeunload', () => {
+  if (!RoomManager.currentParticipant) return;
+  try {
+    const sb = SupabaseConfig.getClient();
+    // Use sendBeacon-equivalent: PATCH that doesn't block the unload
+    sb.from('participants')
+      .update({ is_connected: false })
+      .eq('id', RoomManager.currentParticipant.id);
+  } catch (e) { /* swallow — page is unloading */ }
+});
 </script>
 </body>
 </html>
