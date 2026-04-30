@@ -81,6 +81,31 @@ const studentSubModules = STUDENT_MODULE_FILES.map(f => ({
   content: readRequired(path.join(MULTI, f), f)
 }));
 
+// Fase C.2: master.html is split with the same strategy.
+// Order matters — master-state.js declares globals (chart, simInterval, etc.)
+// that the rest of the controllers mutate; master-init.js runs the IIFE last.
+const MASTER_MODULE_FILES = [
+  'master-state.js',
+  'master-auth.js',
+  'master-lobby.js',
+  'master-waiting.js',
+  'master-sim-start.js',
+  'master-chart.js',
+  'master-sim-loop.js',
+  'master-ticker.js',
+  'master-settings.js',
+  'master-end.js',
+  'master-leaderboard.js',
+  'master-timer.js',
+  'master-toast.js',
+  'master-ta-tools.js',
+  'master-init.js'
+];
+const masterSubModules = MASTER_MODULE_FILES.map(f => ({
+  file: f,
+  content: readRequired(path.join(MULTI, f), f)
+}));
+
 // Polyfill injected BEFORE Supabase CDN to prevent SecurityError on navigator.locks
 // In sandboxed iframes, locks exists but .request() throws SecurityError
 // We override it with a simple pass-through implementation
@@ -126,7 +151,8 @@ function buildInlineHtml(htmlFile, jsModules) {
   return html;
 }
 
-// Master uses all JS modules including historical data
+// Master: shared engines (incl. historical data) + 15 per-concern modules.
+// Engines first because master modules call into PriceEngine, OrderEngine, etc.
 const masterModules = [
   { file: 'supabase-config.js', content: supabaseConfig },
   { file: 'auth.js', content: authJs },
@@ -136,6 +162,7 @@ const masterModules = [
   { file: 'price-engine.js', content: priceEngineJs },
   { file: 'order-engine.js', content: orderEngineJs },
   { file: 'ta-engine.js', content: taEngineJs },
+  ...masterSubModules,
 ];
 
 // Student: shared engines + 11 per-concern modules (split from the old monolith).
